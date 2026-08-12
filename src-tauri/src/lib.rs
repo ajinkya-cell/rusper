@@ -13,6 +13,39 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
+    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+    let mut mods = Modifiers::empty();
+    let font_key = parts.last()?;
+
+    for m in &parts[..parts.len() - 1] {
+        match m.to_lowercase().as_str() {
+            "ctrl" | "control" => mods |= Modifiers::CONTROL,
+            "alt" => mods |= Modifiers::ALT,
+            "shift" => mods |= Modifiers::SHIFT,
+            "super" | "win" | "cmd" => mods |= Modifiers::SUPER,
+            _ => {}
+        }
+    }
+
+    let code = match font_key.to_lowercase().as_str() {
+        "d" => Code::KeyD,
+        "s" => Code::KeyS,
+        "a" => Code::KeyA,
+        "v" => Code::KeyV,
+        "q" => Code::KeyQ,
+        "w" => Code::KeyW,
+        "space" | "spacebar" => Code::Space,
+        "f1" => Code::F1,
+        "f2" => Code::F2,
+        "f10" => Code::F10,
+        "f12" => Code::F12,
+        _ => Code::KeyD,
+    };
+
+    Some(Shortcut::new(if mods.is_empty() { None } else { Some(mods) }, code))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
@@ -54,12 +87,19 @@ pub fn run() {
             let _ = app.global_shortcut().register(shortcut);
 
             // Configure Tray Menu
-            let quit_i = MenuItem::with_id(app, "quit", "Quit FlowDictate", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_i])?;
+            let dashboard_i = MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit Rusper", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&dashboard_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "dashboard" => {
+                        if let Some(window) = app.get_webview_window("dashboard") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -73,7 +113,9 @@ pub fn run() {
             accept_text,
             cancel_popover,
             get_api_key,
-            save_api_key
+            save_api_key,
+            register_hotkey,
+            set_overlay_position
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

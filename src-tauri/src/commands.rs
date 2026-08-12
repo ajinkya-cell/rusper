@@ -1,21 +1,36 @@
 use crate::audio::AudioRecorder;
 use crate::groq::transcribe_audio;
 use crate::injector::copy_and_inject_text;
+use crate::parse_shortcut_str;
 use crate::state::AppState;
 use std::sync::{atomic::Ordering, Mutex};
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, Manager, State, Window};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 static ACTIVE_RECORDER: Mutex<Option<AudioRecorder>> = Mutex::new(None);
+
+fn sanitize_key(raw: &str) -> Option<String> {
+    let cleaned = raw
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string();
+    if !cleaned.is_empty() && cleaned.starts_with("gsk_") {
+        Some(cleaned)
+    } else {
+        None
+    }
+}
 
 fn get_saved_api_key() -> Option<String> {
     let key_file = std::env::temp_dir().join("flow_dictate_key.txt");
     if let Ok(content) = std::fs::read_to_string(&key_file) {
-        let trimmed = content.trim().to_string();
-        if !trimmed.is_empty() {
-            return Some(trimmed);
+        if let Some(valid_key) = sanitize_key(&content) {
+            return Some(valid_key);
         }
     }
-    std::env::var("GROQ_API_KEY").ok().filter(|k| !k.trim().is_empty())
+    std::env::var("GROQ_API_KEY").ok().and_then(|k| sanitize_key(&k))
 }
 
 fn save_api_key_to_disk(key: &str) -> Result<(), String> {
@@ -27,7 +42,9 @@ fn save_api_key_to_disk(key: &str) -> Result<(), String> {
 pub async fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
     if let Ok(guard) = state.custom_api_key.lock() {
         if let Some(ref key) = *guard {
-            return Ok(Some(key.clone()));
+            if let Some(valid) = sanitize_key(key) {
+                return Ok(Some(valid));
+            }
         }
     }
     let disk_key = get_saved_api_key();
@@ -41,11 +58,55 @@ pub async fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, S
 
 #[tauri::command]
 pub async fn save_api_key(key: String, state: State<'_, AppState>) -> Result<(), String> {
-    let trimmed = key.trim().to_string();
+    let trimmed = key.trim().trim_matches('"').trim_matches('\'').trim().to_string();
+    if !trimmed.starts_with("gsk_") {
+        return Err("API key must begin with 'gsk_'".to_string());
+    }
     save_api_key_to_disk(&trimmed)?;
     if let Ok(mut guard) = state.custom_api_key.lock() {
         *guard = Some(trimmed);
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn register_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+    let shortcut = parse_shortcut_str(&hotkey).ok_or_else(|| "Invalid shortcut combination".to_string())?;
+    let _ = app.global_shortcut().unregister_all();
+    app.global_shortcut().register(shortcut).map_err(|e| format!("Failed to register OS hotkey: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_overlay_position(app: AppHandle, position: String) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or_else(|| "Main window not found".to_string())?;
+    let monitor = window.primary_monitor().map_err(|e| e.to_string())?.ok_or_else(|| "Primary monitor not found".to_string())?;
+
+    let monitor_size = monitor.size();
+    let scale_factor = monitor.scale_factor();
+    let window_width = (360.0 * scale_factor) as u32;
+    let window_height = (200.0 * scale_factor) as u32;
+
+    let (x, y) = match position.as_str() {
+        "bottom-right" => (
+            monitor_size.width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
+            monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
+        ),
+        "top-right" => (
+            monitor_size.width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
+            (40.0 * scale_factor) as i32,
+        ),
+        "center" => (
+            (monitor_size.width as i32 - window_width as i32) / 2,
+            (monitor_size.height as i32 - window_height as i32) / 2,
+        ),
+        _ => ( // "bottom-center"
+            (monitor_size.width as i32 - window_width as i32) / 2,
+            monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
+        ),
+    };
+
+    window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -83,9 +144,9 @@ pub async fn stop_recording_and_process(
     state.is_recording.store(false, Ordering::SeqCst);
 
     let api_key = {
-        let memory_key = state.custom_api_key.lock().ok().and_then(|g| g.clone());
+        let memory_key = state.custom_api_key.lock().ok().and_then(|g| g.clone()).and_then(|k| sanitize_key(&k));
         memory_key.or_else(get_saved_api_key).ok_or_else(|| {
-            "Groq API key not found. Please click Settings to configure your API key.".to_string()
+            "Groq API key not found or invalid. Please check Settings to configure your API key.".to_string()
         })?
     };
 

@@ -22,6 +22,18 @@
         "alwaysOnTop": true,
         "center": true,
         "skipTaskbar": true
+      },
+      {
+        "title": "Rusper Dashboard",
+        "label": "dashboard",
+        "url": "index.html#/dashboard",
+        "width": 920,
+        "height": 640,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "center": true,
+        "visible": true
       }
     ],
     "security": {

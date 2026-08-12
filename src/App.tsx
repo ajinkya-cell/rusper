@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
+import Dashboard from './Dashboard';
 
 const WAVE_BAR_COUNT = 16;
 
@@ -31,6 +32,11 @@ function WaveformMarquee() {
 }
 
 export default function App() {
+  const isDashboard = window.location.hash.includes('dashboard');
+  if (isDashboard) {
+    return <Dashboard />;
+  }
+
   const [viewState, setViewState] = useState<'recording' | 'processing' | 'review' | 'settings'>('recording');
   const [resultText, setResultText] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -136,8 +142,16 @@ export default function App() {
       <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="skeuo-bevel-card w-full max-w-[360px] p-4 text-white flex flex-col gap-3 relative"
+        className="skeuo-bevel-card w-full max-w-[360px] p-4 text-white flex flex-col gap-3 relative overflow-hidden"
       >
+        {/* Top Prismatic Border Highlight Overlay */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] z-20 rounded-t-2xl"
+          style={{
+            background:
+              'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 25%, rgba(255,255,255,0.32) 50%, rgba(255,255,255,0.18) 75%, transparent 100%)',
+          }}
+        />
         {/* Header navigation */}
         <div className="flex items-center justify-between text-[11px] text-zinc-400">
           <span className="font-bold text-white tracking-wider uppercase text-[11px]">
