@@ -35,6 +35,20 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Position main window at bottom-center of primary monitor
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(Some(monitor)) = window.primary_monitor() {
+                    let monitor_size = monitor.size();
+                    let scale_factor = monitor.scale_factor();
+                    let window_width = (360.0 * scale_factor) as u32;
+                    let window_height = (200.0 * scale_factor) as u32;
+                    let x = (monitor_size.width as i32 - window_width as i32) / 2;
+                    let y = monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32;
+                    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    let _ = window.set_size(tauri::PhysicalSize::new(window_width, window_height));
+                }
+            }
+
             // Register Global Hotkey: Ctrl + Alt + D
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
             let _ = app.global_shortcut().register(shortcut);
@@ -57,7 +71,9 @@ pub fn run() {
             start_recording,
             stop_recording_and_process,
             accept_text,
-            cancel_popover
+            cancel_popover,
+            get_api_key,
+            save_api_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
