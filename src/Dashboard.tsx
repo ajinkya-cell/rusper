@@ -29,7 +29,14 @@ RULES & EDITING DIRECTIVES:
 2. REMOVE VERBAL FILLERS: Strip out filler words ('um', 'uh', 'like', 'you know', 'I mean', 'basically', 'sort of', 'kind of').
 3. FIX STUTTERS & FALSE STARTS: Remove repeated words ('the the', 'I was I was') and false sentence starts.
 4. PUNCTUATION & CAPITALIZATION: Insert clean sentence structure, proper capitalization, and correct punctuation.
-5. PRESERVE INTENT & MEANING: Never alter the underlying core message or add information that was not spoken. Output ONLY the final polished text with zero conversational commentary.`,
+5. PRESERVE INTENT & MEANING: Never alter the underlying core message or add information that was not spoken. Output ONLY the final polished text with zero conversational commentary.
+
+EXAMPLES:
+Input: "let's deploy to staging at 4... wait no make it 5pm instead"
+Output: Let's deploy to staging at 5:00 PM.
+
+Input: "um so I was thinking we should use PostgreSQL... actually wait Redis is better"
+Output: I was thinking we should use Redis.`,
   },
   {
     id: 'email',
@@ -41,7 +48,11 @@ DIRECTIVES:
 1. Resolve all mid-sentence self-corrections and speech revisions cleanly.
 2. Format with clean paragraph breaks, proper greeting/sign-off if implied, and logical bullet points when lists are spoken.
 3. Maintain a professional, polite, and direct corporate tone.
-4. Erase all filler phrases, stutters, and verbal hesitations. Output ONLY the finalized message body.`,
+4. Erase all filler phrases, stutters, and verbal hesitations. Output ONLY the finalized message body.
+
+EXAMPLES:
+Input: "hey team quick update we finished the API endpoints and tomorrow... wait Monday we launch"
+Output: Hi Team,\n\nQuick update: we have completed the API endpoints. We are scheduled to launch on Monday.`,
   },
   {
     id: 'developer',
@@ -53,7 +64,11 @@ DIRECTIVES:
 1. Resolve self-corrections ('let's use Postgres... wait no, Redis' -> 'Let's use Redis').
 2. Preserve technical terms, API endpoints, variable names, and code syntax accurately (e.g., camelCase, snake_case, JSON, OAuth2, Docker, async/await).
 3. Format code snippets or inline references in markdown backticks where appropriate.
-4. Output crisp, technical, structured prose without filler words.`,
+4. Output crisp, technical, structured prose without filler words.
+
+EXAMPLES:
+Input: "add a new field user_id in the json response and use async await"
+Output: Add a new field \`user_id\` in the JSON response and use \`async/await\`.`,
   },
   {
     id: 'summary',

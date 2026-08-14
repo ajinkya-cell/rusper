@@ -99,9 +99,12 @@ export default function App() {
           .then((m) => {
             if (m === 'push_to_talk' || m === 'interactive') {
               setDictationMode(m);
+              invoke('sync_window_size', { mode: m }).catch(() => {});
             }
           })
           .catch(() => {});
+      } else if (event.payload === 'processing') {
+        setViewState('processing');
       }
     });
 
@@ -138,14 +141,15 @@ export default function App() {
     }
   }, [resultText, showToast]);
 
-  const handleUndoLastInjection = useCallback(async () => {
+  const handleRedoRecording = useCallback(async () => {
+    setResultText('');
+    setViewState('recording');
     try {
-      await invoke('undo_last_injection');
-      showToast('↩️ Dictation insertion reverted.', 'success');
+      await invoke('start_recording');
     } catch (err) {
-      console.error('Undo error:', err);
+      console.error('Redo recording error:', err);
     }
-  }, [showToast]);
+  }, []);
 
   const handleCancelPopover = useCallback(async () => {
     try {
@@ -194,27 +198,34 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewState, handleStopRecording, handleAcceptText, handleCancelPopover]);
 
+  const isPushToTalk = dictationMode === 'push_to_talk';
+
   return (
-    <main className="flex items-end justify-center h-screen w-screen p-2 bg-transparent">
+    <main className="flex items-center justify-center w-full h-full p-0 m-0 bg-transparent overflow-hidden outline-none border-none select-none">
       <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="skeuo-bevel-card w-full max-w-[360px] p-4 text-white flex flex-col gap-3 relative overflow-hidden"
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none border border-white/[0.08] shadow-2xl transition-all duration-200 ${
+          isPushToTalk
+            ? 'w-[260px] h-[52px] rounded-full px-2.5 py-1.5 flex flex-row items-center justify-between'
+            : 'w-[360px] h-[200px] p-4 rounded-2xl flex flex-col justify-between'
+        }`}
       >
-        {/* Top Prismatic Border Highlight Overlay */}
+        {/* Top Prismatic Specular Highlight Line */}
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] z-20 rounded-t-2xl"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] z-20 rounded-full"
           style={{
             background:
-              'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 25%, rgba(255,255,255,0.32) 50%, rgba(255,255,255,0.18) 75%, transparent 100%)',
+              'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.22) 70%, transparent 100%)',
           }}
         />
-        {/* Header navigation */}
-        <div className="flex items-center justify-between text-[11px] text-zinc-400">
-          <span className="font-bold text-white tracking-wider text-xs uppercase">
-            Rusper
-          </span>
-          {dictationMode !== 'push_to_talk' && (
+
+        {/* Top Header Navigation (Interactive Mode Only) */}
+        {!isPushToTalk && (
+          <div className="flex items-center justify-between text-[11px] text-zinc-400 shrink-0">
+            <span className="font-bold text-white tracking-wider text-xs uppercase">
+              Rusper
+            </span>
             <button
               onClick={() => setViewState(viewState === 'settings' ? 'recording' : 'settings')}
               title="Configure API Key"
@@ -222,8 +233,8 @@ export default function App() {
             >
               ⚙ Settings
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Toast Notification Banner */}
         <AnimatePresence>
@@ -232,7 +243,7 @@ export default function App() {
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className={`p-2.5 rounded-xl text-[11px] font-semibold flex items-center justify-between shadow-lg border ${
+              className={`p-2 rounded-xl text-[10px] font-semibold flex items-center justify-between shadow-lg border ${
                 toast.type === 'warning'
                   ? 'bg-amber-950/90 border-amber-700 text-amber-200'
                   : toast.type === 'success'
@@ -251,15 +262,15 @@ export default function App() {
           {viewState === 'recording' && (
             <motion.div
               key="recording"
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="flex items-center justify-between gap-3 h-12"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`flex items-center justify-between gap-3 ${isPushToTalk ? 'w-full h-full' : 'h-12'}`}
             >
-              <div className="skeuo-inner-socket flex-1 h-12 rounded-xl flex items-center justify-center px-1 overflow-hidden">
+              <div className={`skeuo-inner-socket flex-1 flex items-center justify-center px-1 overflow-hidden ${isPushToTalk ? 'h-9 rounded-full' : 'h-12 rounded-xl'}`}>
                 <WaveformMarquee />
               </div>
-              {dictationMode !== 'push_to_talk' && (
+              {!isPushToTalk && (
                 <button
                   onClick={handleStopRecording}
                   title="Done (Enter)"
@@ -278,14 +289,20 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="flex items-center justify-center h-12 text-xs text-zinc-300 gap-2.5"
+              className={`skeuo-inner-socket flex items-center justify-center gap-2.5 overflow-hidden ${
+                isPushToTalk ? 'flex-1 h-9 rounded-full px-3' : 'h-12 rounded-xl px-4 text-xs border border-white/[0.04]'
+              }`}
             >
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>Transcribing with Groq Whisper...</span>
+              <div className="relative w-4 h-4 flex items-center justify-center shrink-0">
+                <div className="absolute inset-0 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              </div>
+              <span className="font-semibold text-white tracking-wide text-xs truncate">
+                {isPushToTalk ? 'Transcribing...' : 'Processing with Groq Whisper...'}
+              </span>
             </motion.div>
           )}
 
-          {/* State 3: Review View */}
+          {/* State 3: Review View (Interactive Mode) */}
           {viewState === 'review' && (
             <motion.div
               key="review"
@@ -299,11 +316,11 @@ export default function App() {
               </div>
               <div className="flex items-center justify-end gap-2">
                 <button
-                  onClick={handleUndoLastInjection}
-                  title="Revert last insertion in active app"
+                  onClick={handleRedoRecording}
+                  title="Discard & Re-record audio dictation"
                   className="skeuo-raised-btn-dark text-xs px-3 py-2 rounded-xl transition cursor-pointer text-zinc-300 border-none flex items-center gap-1 hover:text-white"
                 >
-                  ↩ Undo
+                  🔁 Redo
                 </button>
                 <button
                   onClick={handleCancelPopover}

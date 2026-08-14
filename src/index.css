@@ -37,7 +37,14 @@
     background: transparent !important;
     background-color: transparent !important;
     font-family: 'JetBrains Mono', monospace !important;
+    outline: none !important;
   }
+}
+
+*, *:focus, *:focus-visible, main:focus, body:focus, html:focus {
+  outline: none !important;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .font-article-heading, .font-heading {

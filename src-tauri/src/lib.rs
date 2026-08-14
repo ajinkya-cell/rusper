@@ -74,7 +74,13 @@ pub fn run() {
                     };
 
                     if event.state() == ShortcutState::Pressed {
+                        // Guard against OS keyboard auto-repeat when holding down key in Push-to-Talk mode
+                        if state.is_recording.load(Ordering::SeqCst) {
+                            return;
+                        }
+
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = commands::sync_window_size(window.clone(), mode.clone());
                             let _ = window.show();
                             if mode != "push_to_talk" {
                                 let _ = window.set_focus();
@@ -103,18 +109,16 @@ pub fn run() {
                                     if state.is_recording.load(Ordering::SeqCst) {
                                         if let Ok(transcript) = stop_recording_and_process(state).await {
                                             let text = transcript.trim().to_string();
-                                            let _ = window.hide();
                                             if commands::is_meaningful_speech(&text) {
                                                 let _ = tokio::task::spawn_blocking(move || {
                                                     let _ = copy_and_inject_text(&text);
                                                 }).await;
                                             }
-                                        } else {
-                                            let _ = window.hide();
                                         }
-                                    } else {
-                                        let _ = window.hide();
                                     }
+                                    // 150ms visual completion buffer so loading animation finishes smoothly
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                                    let _ = window.hide();
                                 });
                             }
                         }
@@ -123,13 +127,24 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Position main window at bottom-center of primary monitor
+            // Load Saved Dictation Mode
+            let saved_mode = commands::get_saved_mode_str();
+            if let Ok(mut guard) = app.state::<AppState>().dictation_mode.lock() {
+                *guard = saved_mode.clone();
+            }
+
+            // Dynamic Window Size & Position based on dictation mode
             if let Some(window) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = window.primary_monitor() {
                     let monitor_size = monitor.size();
                     let scale_factor = monitor.scale_factor();
-                    let window_width = (360.0 * scale_factor) as u32;
-                    let window_height = (200.0 * scale_factor) as u32;
+                    let (w_df, h_df) = if saved_mode == "push_to_talk" {
+                        (260.0, 52.0)
+                    } else {
+                        (360.0, 200.0)
+                    };
+                    let window_width = (w_df * scale_factor) as u32;
+                    let window_height = (h_df * scale_factor) as u32;
                     let x = (monitor_size.width as i32 - window_width as i32) / 2;
                     let y = monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32;
                     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
@@ -147,12 +162,6 @@ pub fn run() {
             let saved_prompt = commands::get_saved_system_prompt_str();
             if let Ok(mut guard) = app.state::<AppState>().system_prompt.lock() {
                 *guard = saved_prompt;
-            }
-
-            // Load Saved Dictation Mode
-            let saved_mode = commands::get_saved_mode_str();
-            if let Ok(mut guard) = app.state::<AppState>().dictation_mode.lock() {
-                *guard = saved_mode;
             }
 
             // Register Saved Global Hotkey (defaults to ScrollLock if not set)
@@ -202,7 +211,8 @@ pub fn run() {
             get_selected_audio_device,
             set_selected_audio_device,
             start_mic_test,
-            stop_mic_test
+            stop_mic_test,
+            sync_window_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

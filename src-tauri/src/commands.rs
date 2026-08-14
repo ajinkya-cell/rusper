@@ -271,6 +271,27 @@ pub fn save_system_prompt_str(prompt: &str) {
 }
 
 #[tauri::command]
+pub async fn sync_window_size(window: tauri::WebviewWindow, mode: String) -> Result<(), String> {
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let monitor_size = monitor.size();
+        let scale_factor = monitor.scale_factor();
+        let (w_logical, h_logical) = if mode == "push_to_talk" {
+            (260.0, 52.0)
+        } else {
+            (360.0, 200.0)
+        };
+        let window_width = (w_logical * scale_factor) as u32;
+        let window_height = (h_logical * scale_factor) as u32;
+        let x = (monitor_size.width as i32 - window_width as i32) / 2;
+        let y = monitor_size.height as i32 - window_height as i32 - (100.0 * scale_factor) as i32;
+
+        let _ = window.set_size(tauri::PhysicalSize::new(window_width, window_height));
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_system_prompt(state: State<'_, AppState>) -> Result<String, String> {
     if let Ok(guard) = state.system_prompt.lock() {
         if !guard.trim().is_empty() {
@@ -308,6 +329,12 @@ pub fn is_meaningful_speech(text: &str) -> bool {
     let hallucinations = [
         "no speech detected",
         "no audio detected",
+        "there is no text to refine",
+        "there is no text to refine the input is empty",
+        "the input is empty",
+        "no text provided",
+        "there is no audio",
+        "input is empty",
         "thank you",
         "thank you for watching",
         "subtitles by",
@@ -319,7 +346,7 @@ pub fn is_meaningful_speech(text: &str) -> bool {
     ];
 
     for h in hallucinations {
-        if lower_clean == h || lower_clean.starts_with("subtitles by") || lower_clean.contains("amara.org") {
+        if lower_clean == h || lower_clean.starts_with("subtitles by") || lower_clean.contains("amara.org") || lower_clean.contains("no text to refine") || lower_clean.contains("input is empty") {
             return false;
         }
     }
