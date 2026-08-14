@@ -6,4 +6,5 @@ pub struct AppState {
     pub current_audio_path: Arc<Mutex<Option<String>>>,
     pub last_transcription: Arc<Mutex<String>>,
     pub custom_api_key: Arc<Mutex<Option<String>>>,
+    pub dictation_mode: Arc<Mutex<String>>,
 }

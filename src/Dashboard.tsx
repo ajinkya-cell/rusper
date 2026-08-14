@@ -5,12 +5,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 type Tab = 'api' | 'audio' | 'hotkeys' | 'article';
 
 const PRESET_SHORTCUTS = [
+  'ScrollLock',
+  'Pause',
+  'F8',
+  'F9',
+  'F12',
   'Ctrl + Alt + D',
   'Ctrl + Shift + Space',
   'Alt + Space',
   'Ctrl + Alt + S',
-  'Ctrl + Space',
-  'Alt + D',
 ];
 
 export default function Dashboard() {
@@ -21,11 +24,12 @@ export default function Dashboard() {
   const [systemPrompt, setSystemPrompt] = useState('Clean punctuation, preserve capitalization, remove filler words like um and ah.');
 
   // Hotkey & Overlay Customization States
-  const [selectedShortcut, setSelectedShortcut] = useState('Ctrl + Alt + D');
-  const [customModifier, setCustomModifier] = useState('Ctrl + Alt');
-  const [customKey, setCustomKey] = useState('D');
+  const [selectedShortcut, setSelectedShortcut] = useState('ScrollLock');
+  const [customModifier, setCustomModifier] = useState('None');
+  const [customKey, setCustomKey] = useState('ScrollLock');
   const [overlayPosition, setOverlayPosition] = useState('bottom-center');
   const [hotkeySaveStatus, setHotkeySaveStatus] = useState<string | null>(null);
+  const [dictationMode, setDictationModeState] = useState<'interactive' | 'push_to_talk'>('interactive');
 
   useEffect(() => {
     invoke<string | null>('get_api_key')
@@ -33,7 +37,32 @@ export default function Dashboard() {
         if (key) setApiKey(key);
       })
       .catch(() => {});
+
+    invoke<string>('get_saved_hotkey')
+      .then((hk) => {
+        if (hk) setSelectedShortcut(hk);
+      })
+      .catch(() => {});
+
+    invoke<string>('get_dictation_mode')
+      .then((m) => {
+        if (m === 'push_to_talk' || m === 'interactive') {
+          setDictationModeState(m);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSetDictationMode = async (mode: 'interactive' | 'push_to_talk') => {
+    setDictationModeState(mode);
+    try {
+      await invoke('set_dictation_mode', { mode });
+      setHotkeySaveStatus(`Dictation mode updated to ${mode === 'push_to_talk' ? '"Push-to-Talk (Instant Direct Paste)"' : '"Interactive Review"'} ✓`);
+    } catch (err) {
+      setHotkeySaveStatus(`Mode update error: ${err}`);
+    }
+    setTimeout(() => setHotkeySaveStatus(null), 3000);
+  };
 
   const handleSaveApiKey = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -62,7 +91,7 @@ export default function Dashboard() {
   };
 
   const handleApplyCustomShortcut = async () => {
-    const customStr = `${customModifier} + ${customKey}`;
+    const customStr = customModifier === 'None' ? customKey : `${customModifier} + ${customKey}`;
     try {
       await invoke('register_hotkey', { hotkey: customStr });
       setSelectedShortcut(customStr);
@@ -285,6 +314,51 @@ export default function Dashboard() {
                   </div>
                 )}
 
+                {/* Section 0: Dictation Operating Mode Variant */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-semibold text-zinc-300">Dictation Operating Mode</label>
+                    <span className="text-[11px] font-mono text-zinc-400">
+                      Active: {dictationMode === 'push_to_talk' ? 'Hold & Direct Paste' : 'Click & Review'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleSetDictationMode('interactive')}
+                      className={`p-4 rounded-2xl flex flex-col gap-1.5 transition cursor-pointer text-left border ${
+                        dictationMode === 'interactive'
+                          ? 'bg-white text-black border-white/50 shadow-md font-bold'
+                          : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">💬</span>
+                        <span className="text-xs font-bold">Interactive Review Mode</span>
+                      </div>
+                      <p className={`text-[11px] leading-relaxed ${dictationMode === 'interactive' ? 'text-zinc-700' : 'text-zinc-400'}`}>
+                        Click hotkey to record. Displays a review pop-up with transcribed text and manual <strong>Inject</strong> or <strong>Cancel</strong> buttons.
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() => handleSetDictationMode('push_to_talk')}
+                      className={`p-4 rounded-2xl flex flex-col gap-1.5 transition cursor-pointer text-left border ${
+                        dictationMode === 'push_to_talk'
+                          ? 'bg-white text-black border-white/50 shadow-md font-bold'
+                          : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">⚡</span>
+                        <span className="text-xs font-bold">Push-to-Talk (Hold & Direct Paste)</span>
+                      </div>
+                      <p className={`text-[11px] leading-relaxed ${dictationMode === 'push_to_talk' ? 'text-zinc-700' : 'text-zinc-400'}`}>
+                        Hold hotkey to speak. Releasing the key automatically transcribes and <strong>pastes text straight into active input</strong> without extra clicks.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Section 1: Current Shortcut Display */}
                 <div className="skeuo-inner-socket rounded-2xl p-4 flex items-center justify-between">
                   <div>
@@ -325,6 +399,7 @@ export default function Dashboard() {
                       onChange={(e) => setCustomModifier(e.target.value)}
                       className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-mono cursor-pointer"
                     >
+                      <option value="None">None (Single Key)</option>
                       <option value="Ctrl + Alt">Ctrl + Alt</option>
                       <option value="Ctrl + Shift">Ctrl + Shift</option>
                       <option value="Alt">Alt</option>
@@ -337,16 +412,20 @@ export default function Dashboard() {
                       onChange={(e) => setCustomKey(e.target.value)}
                       className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-mono cursor-pointer"
                     >
-                      <option value="D">Key D</option>
-                      <option value="S">Key S</option>
-                      <option value="Space">Spacebar</option>
-                      <option value="V">Key V</option>
-                      <option value="Q">Key Q</option>
-                      <option value="A">Key A</option>
-                      <option value="W">Key W</option>
+                      <option value="ScrollLock">ScrollLock</option>
+                      <option value="Pause">Pause</option>
+                      <option value="Insert">Insert</option>
                       <option value="F1">F1</option>
                       <option value="F2">F2</option>
+                      <option value="F3">F3</option>
+                      <option value="F4">F4</option>
+                      <option value="F5">F5</option>
+                      <option value="F6">F6</option>
+                      <option value="F7">F7</option>
+                      <option value="F8">F8</option>
+                      <option value="F9">F9</option>
                       <option value="F10">F10</option>
+                      <option value="F11">F11</option>
                       <option value="F12">F12</option>
                     </select>
 

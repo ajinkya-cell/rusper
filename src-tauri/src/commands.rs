@@ -69,11 +69,75 @@ pub async fn save_api_key(key: String, state: State<'_, AppState>) -> Result<(),
     Ok(())
 }
 
+pub fn get_saved_hotkey_str() -> String {
+    let file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
+    if let Ok(content) = std::fs::read_to_string(&file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    "ScrollLock".to_string()
+}
+
+pub fn save_hotkey_str(hotkey: &str) {
+    let file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
+    let _ = std::fs::write(&file, hotkey);
+}
+
+pub fn get_saved_mode_str() -> String {
+    let file = std::env::temp_dir().join("flow_dictate_mode.txt");
+    if let Ok(content) = std::fs::read_to_string(&file) {
+        let trimmed = content.trim();
+        if trimmed == "push_to_talk" || trimmed == "interactive" {
+            return trimmed.to_string();
+        }
+    }
+    "interactive".to_string()
+}
+
+pub fn save_mode_str(mode: &str) {
+    let file = std::env::temp_dir().join("flow_dictate_mode.txt");
+    let _ = std::fs::write(&file, mode);
+}
+
+#[tauri::command]
+pub async fn get_dictation_mode(state: State<'_, AppState>) -> Result<String, String> {
+    if let Ok(guard) = state.dictation_mode.lock() {
+        if !guard.is_empty() {
+            return Ok(guard.clone());
+        }
+    }
+    let saved = get_saved_mode_str();
+    if let Ok(mut guard) = state.dictation_mode.lock() {
+        *guard = saved.clone();
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn set_dictation_mode(mode: String, state: State<'_, AppState>) -> Result<(), String> {
+    if mode != "interactive" && mode != "push_to_talk" {
+        return Err("Invalid dictation mode".to_string());
+    }
+    save_mode_str(&mode);
+    if let Ok(mut guard) = state.dictation_mode.lock() {
+        *guard = mode;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_saved_hotkey() -> Result<String, String> {
+    Ok(get_saved_hotkey_str())
+}
+
 #[tauri::command]
 pub async fn register_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
     let shortcut = parse_shortcut_str(&hotkey).ok_or_else(|| "Invalid shortcut combination".to_string())?;
     let _ = app.global_shortcut().unregister_all();
     app.global_shortcut().register(shortcut).map_err(|e| format!("Failed to register OS hotkey: {}", e))?;
+    save_hotkey_str(&hotkey);
     Ok(())
 }
 

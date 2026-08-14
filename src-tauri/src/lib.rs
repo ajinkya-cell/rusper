@@ -13,6 +13,9 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub use std::sync::atomic::Ordering;
+use crate::injector::copy_and_inject_text;
+
 pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
     let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
     let mut mods = Modifiers::empty();
@@ -24,6 +27,7 @@ pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
             "alt" => mods |= Modifiers::ALT,
             "shift" => mods |= Modifiers::SHIFT,
             "super" | "win" | "cmd" => mods |= Modifiers::SUPER,
+            "none" | "" => {},
             _ => {}
         }
     }
@@ -38,8 +42,20 @@ pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
         "space" | "spacebar" => Code::Space,
         "f1" => Code::F1,
         "f2" => Code::F2,
+        "f3" => Code::F3,
+        "f4" => Code::F4,
+        "f5" => Code::F5,
+        "f6" => Code::F6,
+        "f7" => Code::F7,
+        "f8" => Code::F8,
+        "f9" => Code::F9,
         "f10" => Code::F10,
+        "f11" => Code::F11,
         "f12" => Code::F12,
+        "scrolllock" | "scroll_lock" => Code::ScrollLock,
+        "pause" | "pausebreak" => Code::Pause,
+        "insert" => Code::Insert,
+        "capslock" | "caps_lock" => Code::CapsLock,
         _ => Code::KeyD,
     };
 
@@ -52,16 +68,55 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
+                    let state = app.state::<AppState>();
+                    let mode = {
+                        state.dictation_mode.lock().map(|g| g.clone()).unwrap_or_else(|_| "interactive".to_string())
+                    };
+
                     if event.state() == ShortcutState::Pressed {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
-                            let _ = window.set_focus();
+                            if mode != "push_to_talk" {
+                                let _ = window.set_focus();
+                            }
                             let _ = app.emit("ui-state", "recording");
                             let handle = app.clone();
                             tauri::async_runtime::spawn(async move {
                                 let state = handle.state::<AppState>();
                                 let _ = start_recording(handle.clone(), state).await;
                             });
+                        }
+                    } else if event.state() == ShortcutState::Released {
+                        if mode == "push_to_talk" {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = app.emit("ui-state", "processing");
+                                let handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state = handle.state::<AppState>();
+                                    // Wait briefly if recording is still starting
+                                    let mut attempts = 0;
+                                    while !state.is_recording.load(Ordering::SeqCst) && attempts < 10 {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+                                        attempts += 1;
+                                    }
+
+                                    if state.is_recording.load(Ordering::SeqCst) {
+                                        if let Ok(transcript) = stop_recording_and_process(state).await {
+                                            let text = transcript.trim().to_string();
+                                            let _ = window.hide();
+                                            if !text.is_empty() && text != "(No speech detected)" {
+                                                let _ = tokio::task::spawn_blocking(move || {
+                                                    let _ = copy_and_inject_text(&text);
+                                                }).await;
+                                            }
+                                        } else {
+                                            let _ = window.hide();
+                                        }
+                                    } else {
+                                        let _ = window.hide();
+                                    }
+                                });
+                            }
                         }
                     }
                 })
@@ -82,9 +137,17 @@ pub fn run() {
                 }
             }
 
-            // Register Global Hotkey: Ctrl + Alt + D
-            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
-            let _ = app.global_shortcut().register(shortcut);
+            // Load Saved Dictation Mode
+            let saved_mode = commands::get_saved_mode_str();
+            if let Ok(mut guard) = app.state::<AppState>().dictation_mode.lock() {
+                *guard = saved_mode;
+            }
+
+            // Register Saved Global Hotkey (defaults to ScrollLock if not set)
+            let saved_hk = commands::get_saved_hotkey_str();
+            if let Some(shortcut) = parse_shortcut_str(&saved_hk) {
+                let _ = app.global_shortcut().register(shortcut);
+            }
 
             // Configure Tray Menu
             let dashboard_i = MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
@@ -114,8 +177,11 @@ pub fn run() {
             cancel_popover,
             get_api_key,
             save_api_key,
+            get_saved_hotkey,
             register_hotkey,
-            set_overlay_position
+            set_overlay_position,
+            get_dictation_mode,
+            set_dictation_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

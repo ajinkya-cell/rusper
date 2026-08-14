@@ -9,7 +9,7 @@ pub fn copy_and_inject_text(text: &str) -> Result<(), String> {
     clipboard.set_text(text).map_err(|e| format!("Failed to set clipboard: {}", e))?;
 
     // 2. Short sleep to allow UI focus shift back to targeted window
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_millis(200));
 
     // 3. Simulate Ctrl+V Keystroke
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("Enigo init error: {:?}", e))?;
