@@ -38,13 +38,22 @@
     background-color: transparent !important;
     font-family: 'JetBrains Mono', monospace !important;
     outline: none !important;
+    outline-width: 0 !important;
+    border: none !important;
   }
 }
 
-*, *:focus, *:focus-visible, main:focus, body:focus, html:focus {
-  outline: none !important;
-  box-shadow: none;
-  -webkit-tap-highlight-color: transparent;
+html, body, #root, main, div, button, input, textarea, a, svg,
+*:focus, *:focus-visible, *:focus-within, *:active,
+main:focus, main:focus-visible, body:focus, html:focus {
+  outline: 0 !important;
+  outline-width: 0 !important;
+  outline-style: none !important;
+  outline-color: transparent !important;
+  box-shadow: none !important;
+  border-color: transparent;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
 }
 
 .font-article-heading, .font-heading {

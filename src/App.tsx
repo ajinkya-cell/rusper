@@ -6,17 +6,21 @@ import Dashboard from './Dashboard';
 
 const WAVE_BAR_COUNT = 16;
 
-function WaveformMarquee() {
+function WaveformMarquee({ compact }: { compact?: boolean }) {
   const bars = Array.from({ length: WAVE_BAR_COUNT }, (_, index) => index);
 
   return (
-    <div className="flex h-12 items-center justify-center gap-1.5 px-2">
+    <div className={`flex items-center justify-center gap-1.5 px-2 ${compact ? 'h-6 py-0.5' : 'h-10'}`}>
       {bars.map((index) => (
         <motion.span
           key={index}
-          className="block w-1.5 shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+          className={`block shrink-0 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)] ${
+            compact ? 'w-1' : 'w-1.5'
+          }`}
           animate={{
-            height: ['20%', `${30 + (index % 8) * 7}%`, '70%', '20%'],
+            height: compact
+              ? ['15%', `${20 + (index % 6) * 5}%`, '45%', '15%']
+              : ['20%', `${30 + (index % 8) * 7}%`, '65%', '20%'],
           }}
           transition={{
             duration: 0.35 + (index % 4) * 0.1,
@@ -198,14 +202,28 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewState, handleStopRecording, handleAcceptText, handleCancelPopover]);
 
+  useEffect(() => {
+    const handleFocus = () => {
+      if (document.activeElement && document.activeElement !== document.body) {
+        (document.activeElement as HTMLElement).blur();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   const isPushToTalk = dictationMode === 'push_to_talk';
 
   return (
-    <main className="flex items-center justify-center w-full h-full p-0 m-0 bg-transparent overflow-hidden outline-none border-none select-none">
+    <main
+      tabIndex={-1}
+      className="flex items-center justify-center w-full h-full p-0 m-0 bg-transparent overflow-hidden outline-none focus:outline-none border-none select-none"
+    >
       <motion.div
+        tabIndex={-1}
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none border border-white/[0.08] shadow-2xl transition-all duration-200 ${
+        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none focus:outline-none border border-white/[0.08] shadow-2xl transition-all duration-200 ${
           isPushToTalk
             ? 'w-[260px] h-[52px] rounded-full px-2.5 py-1.5 flex flex-row items-center justify-between'
             : 'w-[360px] h-[200px] p-4 rounded-2xl flex flex-col justify-between'
@@ -268,7 +286,7 @@ export default function App() {
               className={`flex items-center justify-between gap-3 ${isPushToTalk ? 'w-full h-full' : 'h-12'}`}
             >
               <div className={`skeuo-inner-socket flex-1 flex items-center justify-center px-1 overflow-hidden ${isPushToTalk ? 'h-9 rounded-full' : 'h-12 rounded-xl'}`}>
-                <WaveformMarquee />
+                <WaveformMarquee compact={isPushToTalk} />
               </div>
               {!isPushToTalk && (
                 <button
