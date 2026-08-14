@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -11,7 +11,35 @@ struct WhisperResponse {
     text: String,
 }
 
-pub async fn transcribe_audio(file_path: PathBuf, api_key: &str) -> Result<String> {
+#[derive(Serialize)]
+struct ChatMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Serialize)]
+struct ChatCompletionRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatMessage<'a>>,
+    temperature: f32,
+}
+
+#[derive(Deserialize)]
+struct ChatChoice {
+    message: ChatMessageResponse,
+}
+
+#[derive(Deserialize)]
+struct ChatMessageResponse {
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
+}
+
+pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: Option<&str>) -> Result<String> {
     let client = Client::new();
     let file = File::open(&file_path)
         .await
@@ -22,11 +50,18 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str) -> Result<Strin
         .file_name("recording.wav")
         .mime_str("audio/wav")?;
 
-    let form = Form::new()
+    let mut form = Form::new()
         .part("file", file_part)
         .text("model", "whisper-large-v3-turbo")
         .text("response_format", "json")
         .text("language", "en");
+
+    if let Some(prompt) = system_prompt {
+        if !prompt.trim().is_empty() {
+            let truncated_prompt = prompt.chars().take(200).collect::<String>();
+            form = form.text("prompt", truncated_prompt);
+        }
+    }
 
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
@@ -38,13 +73,50 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str) -> Result<Strin
 
     if !response.status().is_success() {
         let err_text = response.text().await.unwrap_or_default();
-        anyhow::bail!("Groq API error: {}", err_text);
+        anyhow::bail!("Groq Whisper API error: {}", err_text);
     }
 
     let result: WhisperResponse = response
         .json()
         .await
-        .context("Failed to parse Groq API response")?;
+        .context("Failed to parse Groq Whisper API response")?;
 
-    Ok(result.text.trim().to_string())
+    let raw_text = result.text.trim().to_string();
+
+    // If an in-depth system prompt is active, run ultra-fast LLM post-processing for deep self-correction resolution
+    if let Some(prompt) = system_prompt {
+        let trimmed_prompt = prompt.trim();
+        if !trimmed_prompt.is_empty() && !raw_text.is_empty() {
+            let chat_req = ChatCompletionRequest {
+                model: "llama-3.3-70b-versatile",
+                messages: vec![
+                    ChatMessage { role: "system", content: trimmed_prompt },
+                    ChatMessage { role: "user", content: &raw_text },
+                ],
+                temperature: 0.1,
+            };
+
+            let chat_resp = client
+                .post("https://api.groq.com/openai/v1/chat/completions")
+                .bearer_auth(api_key)
+                .json(&chat_req)
+                .send()
+                .await;
+
+            if let Ok(res) = chat_resp {
+                if res.status().is_success() {
+                    if let Ok(chat_result) = res.json::<ChatCompletionResponse>().await {
+                        if let Some(first_choice) = chat_result.choices.into_iter().next() {
+                            let refined = first_choice.message.content.trim().to_string();
+                            if !refined.is_empty() {
+                                return Ok(refined);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(raw_text)
 }

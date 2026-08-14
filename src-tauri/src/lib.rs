@@ -104,7 +104,7 @@ pub fn run() {
                                         if let Ok(transcript) = stop_recording_and_process(state).await {
                                             let text = transcript.trim().to_string();
                                             let _ = window.hide();
-                                            if !text.is_empty() && text != "(No speech detected)" {
+                                            if commands::is_meaningful_speech(&text) {
                                                 let _ = tokio::task::spawn_blocking(move || {
                                                     let _ = copy_and_inject_text(&text);
                                                 }).await;
@@ -135,6 +135,18 @@ pub fn run() {
                     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
                     let _ = window.set_size(tauri::PhysicalSize::new(window_width, window_height));
                 }
+            }
+
+            // Load Saved Audio Device
+            let saved_dev = commands::get_saved_device_str();
+            if let Ok(mut guard) = app.state::<AppState>().selected_audio_device.lock() {
+                *guard = saved_dev;
+            }
+
+            // Load Saved System Prompt
+            let saved_prompt = commands::get_saved_system_prompt_str();
+            if let Ok(mut guard) = app.state::<AppState>().system_prompt.lock() {
+                *guard = saved_prompt;
             }
 
             // Load Saved Dictation Mode
@@ -181,7 +193,16 @@ pub fn run() {
             register_hotkey,
             set_overlay_position,
             get_dictation_mode,
-            set_dictation_mode
+            set_dictation_mode,
+            get_system_prompt,
+            save_system_prompt,
+            validate_active_text_field,
+            undo_last_injection,
+            get_audio_devices,
+            get_selected_audio_device,
+            set_selected_audio_device,
+            start_mic_test,
+            stop_mic_test
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

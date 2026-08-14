@@ -41,8 +41,15 @@ export default function App() {
   const [resultText, setResultText] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [dictationMode, setDictationMode] = useState<'interactive' | 'push_to_talk'>('interactive');
+  const [toast, setToast] = useState<{ message: string; type: 'warning' | 'info' | 'success' } | null>(null);
 
-  // Load initial API key on startup
+  const showToast = useCallback((message: string, type: 'warning' | 'info' | 'success' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4500);
+  }, []);
+
+  // Load initial API key & dictation mode on startup
   useEffect(() => {
     invoke<string | null>('get_api_key')
       .then((key) => {
@@ -53,20 +60,14 @@ export default function App() {
         }
       })
       .catch(() => setViewState('settings'));
-  }, []);
 
-  // Listen for backend UI state events
-  useEffect(() => {
-    const unlistenUI = listen<string>('ui-state', (event) => {
-      if (event.payload === 'recording') {
-        setViewState('recording');
-        setResultText('');
-      }
-    });
-
-    return () => {
-      unlistenUI.then((fn) => fn());
-    };
+    invoke<string>('get_dictation_mode')
+      .then((m) => {
+        if (m === 'push_to_talk' || m === 'interactive') {
+          setDictationMode(m);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Handlers
@@ -74,21 +75,77 @@ export default function App() {
     setViewState('processing');
     try {
       const text = await invoke<string>('stop_recording_and_process');
-      setResultText(text || '(No speech detected)');
+      const clean = text ? text.trim() : '';
+      if (!clean || clean === '(No audio detected)' || clean === '(No speech detected)') {
+        setResultText('(No audio detected)');
+        showToast('🔇 No audio detected. Left input field blank.', 'warning');
+      } else {
+        setResultText(clean);
+      }
       setViewState('review');
     } catch (err) {
       setResultText(`Error: ${err}`);
       setViewState('review');
     }
-  }, []);
+  }, [showToast]);
+
+  // Listen for backend UI state, silence timeout, and max recording duration events
+  useEffect(() => {
+    const unlistenUI = listen<string>('ui-state', (event) => {
+      if (event.payload === 'recording') {
+        setViewState('recording');
+        setResultText('');
+        invoke<string>('get_dictation_mode')
+          .then((m) => {
+            if (m === 'push_to_talk' || m === 'interactive') {
+              setDictationMode(m);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+
+    const unlistenSilence = listen('silence-timeout', () => {
+      showToast('🔇 No audio detected for 15s. Dictation auto-paused.', 'warning');
+    });
+
+    const unlistenMaxDuration = listen('max-duration-reached', () => {
+      showToast('⏱️ Max recording limit reached (90s). Processing audio...', 'info');
+      handleStopRecording();
+    });
+
+    return () => {
+      unlistenUI.then((fn) => fn());
+      unlistenSilence.then((fn) => fn());
+      unlistenMaxDuration.then((fn) => fn());
+    };
+  }, [showToast, handleStopRecording]);
 
   const handleAcceptText = useCallback(async () => {
+    if (!resultText || resultText === '(No audio detected)' || resultText === '(No speech detected)') {
+      showToast('🔇 No audio detected. Nothing to paste.', 'warning');
+      return;
+    }
     try {
+      const isValidField = await invoke<boolean>('validate_active_text_field');
+      if (!isValidField) {
+        showToast('⚠️ No active text field detected. Click into an app to paste.', 'warning');
+        return;
+      }
       await invoke('accept_text');
     } catch (err) {
       console.error('Accept text error:', err);
     }
-  }, []);
+  }, [resultText, showToast]);
+
+  const handleUndoLastInjection = useCallback(async () => {
+    try {
+      await invoke('undo_last_injection');
+      showToast('↩️ Dictation insertion reverted.', 'success');
+    } catch (err) {
+      console.error('Undo error:', err);
+    }
+  }, [showToast]);
 
   const handleCancelPopover = useCallback(async () => {
     try {
@@ -157,14 +214,37 @@ export default function App() {
           <span className="font-bold text-white tracking-wider uppercase text-[11px]">
             RUSPER
           </span>
-          <button
-            onClick={() => setViewState(viewState === 'settings' ? 'recording' : 'settings')}
-            title="Configure API Key"
-            className="hover:text-white transition cursor-pointer font-medium"
-          >
-            ⚙ Settings
-          </button>
+          {dictationMode !== 'push_to_talk' && (
+            <button
+              onClick={() => setViewState(viewState === 'settings' ? 'recording' : 'settings')}
+              title="Configure API Key"
+              className="hover:text-white transition cursor-pointer font-medium"
+            >
+              ⚙ Settings
+            </button>
+          )}
         </div>
+
+        {/* Toast Notification Banner */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className={`p-2.5 rounded-xl text-[11px] font-semibold flex items-center justify-between shadow-lg border ${
+                toast.type === 'warning'
+                  ? 'bg-amber-950/90 border-amber-700 text-amber-200'
+                  : toast.type === 'success'
+                  ? 'bg-emerald-950/90 border-emerald-700 text-emerald-200'
+                  : 'bg-zinc-900 border-zinc-700 text-white'
+              }`}
+            >
+              <span>{toast.message}</span>
+              <button onClick={() => setToast(null)} className="ml-2 font-bold opacity-70 hover:opacity-100 cursor-pointer">✕</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {/* State 1: Recording View */}
@@ -179,13 +259,15 @@ export default function App() {
               <div className="skeuo-inner-socket flex-1 h-12 rounded-xl flex items-center justify-center px-1 overflow-hidden">
                 <WaveformMarquee />
               </div>
-              <button
-                onClick={handleStopRecording}
-                title="Done (Enter)"
-                className="skeuo-raised-btn w-11 h-11 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition cursor-pointer hover:bg-zinc-100"
-              >
-                <img src="/check-circle.svg" alt="Done" className="w-6 h-6 text-black" />
-              </button>
+              {dictationMode !== 'push_to_talk' && (
+                <button
+                  onClick={handleStopRecording}
+                  title="Done (Enter)"
+                  className="skeuo-raised-btn w-11 h-11 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition cursor-pointer hover:bg-zinc-100"
+                >
+                  <img src="/check-circle.svg" alt="Done" className="w-6 h-6 text-black" />
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -216,6 +298,13 @@ export default function App() {
                 {resultText}
               </div>
               <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={handleUndoLastInjection}
+                  title="Revert last insertion in active app"
+                  className="skeuo-raised-btn-dark text-xs px-3 py-2 rounded-xl transition cursor-pointer text-zinc-300 border-none flex items-center gap-1 hover:text-white"
+                >
+                  ↩ Undo
+                </button>
                 <button
                   onClick={handleCancelPopover}
                   className="skeuo-raised-btn-dark text-xs px-3.5 py-2 rounded-xl transition cursor-pointer text-zinc-300 border-none"

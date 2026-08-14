@@ -1,4 +1,4 @@
-use crate::audio::AudioRecorder;
+use crate::audio::{self, AudioRecorder};
 use crate::groq::transcribe_audio;
 use crate::injector::copy_and_inject_text;
 use crate::parse_shortcut_str;
@@ -174,13 +174,77 @@ pub async fn set_overlay_position(app: AppHandle, position: String) -> Result<()
     Ok(())
 }
 
+pub fn get_saved_device_str() -> Option<String> {
+    let file = std::env::temp_dir().join("flow_dictate_device.txt");
+    if let Ok(content) = std::fs::read_to_string(&file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+pub fn save_device_str(device: &str) {
+    let file = std::env::temp_dir().join("flow_dictate_device.txt");
+    let _ = std::fs::write(&file, device);
+}
+
+#[tauri::command]
+pub async fn get_audio_devices() -> Result<Vec<String>, String> {
+    Ok(audio::get_available_devices())
+}
+
+#[tauri::command]
+pub async fn get_selected_audio_device(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    if let Ok(guard) = state.selected_audio_device.lock() {
+        if guard.is_some() {
+            return Ok(guard.clone());
+        }
+    }
+    let saved = get_saved_device_str();
+    if let Ok(mut guard) = state.selected_audio_device.lock() {
+        *guard = saved.clone();
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn set_selected_audio_device(device_name: String, state: State<'_, AppState>) -> Result<(), String> {
+    save_device_str(&device_name);
+    if let Ok(mut guard) = state.selected_audio_device.lock() {
+        *guard = Some(device_name);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_mic_test(app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let dev_name = {
+        let memory = state.selected_audio_device.lock().ok().and_then(|g| g.clone());
+        memory.or_else(get_saved_device_str)
+    };
+    audio::start_mic_test_stream(app_handle, dev_name)
+}
+
+#[tauri::command]
+pub async fn stop_mic_test() -> Result<(), String> {
+    audio::stop_mic_test_stream();
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn start_recording(app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if state.is_recording.load(Ordering::SeqCst) {
         return Ok(());
     }
 
-    let (recorder, _) = AudioRecorder::new(app_handle)?;
+    let dev_name = {
+        let memory = state.selected_audio_device.lock().ok().and_then(|g| g.clone());
+        memory.or_else(get_saved_device_str)
+    };
+
+    let (recorder, _) = AudioRecorder::new(app_handle, dev_name)?;
     let mut guard = ACTIVE_RECORDER
         .lock()
         .map_err(|_| "Failed to lock active recorder mutex".to_string())?;
@@ -188,6 +252,79 @@ pub async fn start_recording(app_handle: AppHandle, state: State<'_, AppState>) 
     *guard = Some(recorder);
     state.is_recording.store(true, Ordering::SeqCst);
     Ok(())
+}
+
+pub fn get_saved_system_prompt_str() -> String {
+    let file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
+    if let Ok(content) = std::fs::read_to_string(&file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    "You are an expert real-time voice transcription editor. Your job is to convert spoken stream-of-consciousness into polished, clean text while resolving all self-corrections, plan revisions, stuttering, and false starts.\n\nRULES & EDITING DIRECTIVES:\n1. RESOLVE SELF-CORRECTIONS & REVISIONS: If the speaker changes their mind, dates, times, names, or plans mid-sentence (e.g., 'let's meet on the 20th... actually no, the 21st', 'email John... wait, I mean Sarah'), ONLY output the final corrected version ('Let's meet on the 21st.', 'Email Sarah.'). Completely erase the abandoned initial thought.\n2. REMOVE VERBAL FILLERS: Strip out filler words ('um', 'uh', 'like', 'you know', 'I mean', 'basically', 'sort of', 'kind of').\n3. FIX STUTTERS & FALSE STARTS: Remove repeated words ('the the', 'I was I was') and false sentence starts.\n4. PUNCTUATION & CAPITALIZATION: Insert clean sentence structure, proper capitalization, and correct punctuation.\n5. PRESERVE INTENT & MEANING: Never alter the underlying core message or add information that was not spoken. Output ONLY the final polished text with zero conversational commentary.".to_string()
+}
+
+pub fn save_system_prompt_str(prompt: &str) {
+    let file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
+    let _ = std::fs::write(&file, prompt);
+}
+
+#[tauri::command]
+pub async fn get_system_prompt(state: State<'_, AppState>) -> Result<String, String> {
+    if let Ok(guard) = state.system_prompt.lock() {
+        if !guard.trim().is_empty() {
+            return Ok(guard.clone());
+        }
+    }
+    let saved = get_saved_system_prompt_str();
+    if let Ok(mut guard) = state.system_prompt.lock() {
+        *guard = saved.clone();
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn save_system_prompt(prompt: String, state: State<'_, AppState>) -> Result<(), String> {
+    save_system_prompt_str(&prompt);
+    if let Ok(mut guard) = state.system_prompt.lock() {
+        *guard = prompt;
+    }
+    Ok(())
+}
+
+pub fn is_meaningful_speech(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_lowercase();
+    let lower_clean = lower.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
+    
+    if lower_clean.is_empty() {
+        return false;
+    }
+
+    let hallucinations = [
+        "no speech detected",
+        "no audio detected",
+        "thank you",
+        "thank you for watching",
+        "subtitles by",
+        "amara.org",
+        "bye",
+        "you",
+        "so",
+        "the end",
+    ];
+
+    for h in hallucinations {
+        if lower_clean == h || lower_clean.starts_with("subtitles by") || lower_clean.contains("amara.org") {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[tauri::command]
@@ -214,15 +351,26 @@ pub async fn stop_recording_and_process(
         })?
     };
 
-    let transcript = transcribe_audio(audio_path, &api_key)
+    let sys_prompt = {
+        let memory = state.system_prompt.lock().ok().and_then(|g| if g.trim().is_empty() { None } else { Some(g.clone()) });
+        memory.unwrap_or_else(get_saved_system_prompt_str)
+    };
+
+    let raw_transcript = transcribe_audio(audio_path, &api_key, Some(&sys_prompt))
         .await
         .map_err(|e| format!("Transcription failed: {:#}", e))?;
 
+    let final_transcript = if is_meaningful_speech(&raw_transcript) {
+        raw_transcript
+    } else {
+        "(No audio detected)".to_string()
+    };
+
     if let Ok(mut last) = state.last_transcription.lock() {
-        *last = transcript.clone();
+        *last = final_transcript.clone();
     }
 
-    Ok(transcript)
+    Ok(final_transcript)
 }
 
 #[tauri::command]
@@ -234,9 +382,11 @@ pub async fn accept_text(window: Window, state: State<'_, AppState>) -> Result<(
         .clone();
     let _ = window.hide();
 
-    tokio::task::spawn_blocking(move || {
-        let _ = copy_and_inject_text(&text);
-    });
+    if is_meaningful_speech(&text) {
+        tokio::task::spawn_blocking(move || {
+            let _ = copy_and_inject_text(&text);
+        });
+    }
 
     Ok(())
 }
@@ -244,4 +394,59 @@ pub async fn accept_text(window: Window, state: State<'_, AppState>) -> Result<(
 #[tauri::command]
 pub async fn cancel_popover(window: Window) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn is_valid_foreground_text_field() -> bool {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetForegroundWindow() -> isize;
+        fn GetClassNameW(hWnd: isize, lpClassName: *mut u16, nMaxCount: i32) -> i32;
+    }
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd == 0 {
+            return false;
+        }
+        let mut class_name = [0u16; 256];
+        let len = GetClassNameW(hwnd, class_name.as_mut_ptr(), 256);
+        if len > 0 {
+            let class_str = String::from_utf16_lossy(&class_name[..len as usize]);
+            let lower = class_str.to_lowercase();
+            if lower == "progman" || lower == "workerw" || lower == "shell_traywnd" {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_valid_foreground_text_field() -> bool {
+    true
+}
+
+#[tauri::command]
+pub async fn validate_active_text_field() -> Result<bool, String> {
+    Ok(is_valid_foreground_text_field())
+}
+
+#[tauri::command]
+pub async fn undo_last_injection() -> Result<(), String> {
+    tokio::task::spawn_blocking(|| {
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("Enigo init error: {:?}", e))?;
+        
+        #[cfg(target_os = "macos")]
+        let modifier = Key::Meta;
+        #[cfg(not(target_os = "macos"))]
+        let modifier = Key::Control;
+
+        let _ = enigo.key(modifier, Direction::Press);
+        let _ = enigo.key(Key::Unicode('z'), Direction::Click);
+        let _ = enigo.key(modifier, Direction::Release);
+
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }

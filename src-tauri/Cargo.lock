@@ -1355,6 +1355,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "tokio-util",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
