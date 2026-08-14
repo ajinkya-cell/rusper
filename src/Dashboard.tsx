@@ -95,6 +95,8 @@ export default function Dashboard() {
   const [overlayPosition, setOverlayPosition] = useState('bottom-center');
   const [hotkeySaveStatus, setHotkeySaveStatus] = useState<string | null>(null);
   const [dictationMode, setDictationModeState] = useState<'interactive' | 'push_to_talk'>('interactive');
+  const [hoveredPresetId, setHoveredPresetId] = useState<string | null>(null);
+  const [isSafeguardsOpen, setIsSafeguardsOpen] = useState<boolean>(false);
 
   // Audio Devices State
   const [audioDevices, setAudioDevices] = useState<string[]>([]);
@@ -221,25 +223,28 @@ export default function Dashboard() {
     }
   };
 
-  const handleApplyPresetShortcut = async (preset: string) => {
+  const handleApplyPresetShortcut = async (shortcut: string) => {
+    setSelectedShortcut(shortcut);
     try {
-      await invoke('register_hotkey', { hotkey: preset });
-      setSelectedShortcut(preset);
-      setHotkeySaveStatus(`Registered global trigger "${preset}" ✓`);
+      await invoke('register_hotkey', { shortcut });
+      setHotkeySaveStatus(`Global shortcut updated to "${shortcut}" ✓`);
     } catch (err) {
-      setHotkeySaveStatus(`Hotkey registration error: ${err}`);
+      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
     }
     setTimeout(() => setHotkeySaveStatus(null), 3000);
   };
 
-  const handleApplyCustomShortcut = async () => {
-    const customStr = customModifier === 'None' ? customKey : `${customModifier} + ${customKey}`;
+  const handleSaveCustomShortcut = async () => {
+    let shortcut = customKey;
+    if (customModifier !== 'None') {
+      shortcut = `${customModifier} + ${customKey}`;
+    }
+    setSelectedShortcut(shortcut);
     try {
-      await invoke('register_hotkey', { hotkey: customStr });
-      setSelectedShortcut(customStr);
-      setHotkeySaveStatus(`Registered custom global trigger "${customStr}" ✓`);
+      await invoke('register_hotkey', { shortcut });
+      setHotkeySaveStatus(`Custom shortcut registered: "${shortcut}" ✓`);
     } catch (err) {
-      setHotkeySaveStatus(`Hotkey registration error: ${err}`);
+      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
     }
     setTimeout(() => setHotkeySaveStatus(null), 3000);
   };
@@ -259,8 +264,8 @@ export default function Dashboard() {
     <div className="w-screen h-screen bg-[#111111] text-white flex flex-col font-sans select-none overflow-hidden">
       {/* Top Header - Minimal Title Only */}
       <header className="px-8 pt-6 pb-2 flex items-center justify-between shrink-0">
-        <h1 className="text-xl font-black tracking-wider uppercase text-white font-sans">
-          RUSPER
+        <h1 className="text-2xl font-bold tracking-wider text-white font-sans uppercase">
+          Rusper
         </h1>
       </header>
 
@@ -271,57 +276,57 @@ export default function Dashboard() {
           <nav className="skeuo-inner-socket rounded-2xl p-2.5 flex flex-col gap-2 border border-white/[0.04]">
             <button
               onClick={() => setActiveTab('api')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
+              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
                 activeTab === 'api'
                   ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
                   : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
               }`}
             >
-              <span className="text-base">⚙</span> API & Model Settings
+              API & Model Settings
             </button>
 
             <button
               onClick={() => setActiveTab('audio')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
+              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
                 activeTab === 'audio'
                   ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
                   : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
               }`}
             >
-              <span className="text-base">🎙</span> Audio Input Devices
+              Audio Input Devices
             </button>
 
             <button
               onClick={() => setActiveTab('mode')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
+              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
                 activeTab === 'mode'
                   ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
                   : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
               }`}
             >
-              <span className="text-base">⚡</span> Operating Mode
+              Operating Mode
             </button>
 
             <button
               onClick={() => setActiveTab('hotkeys')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
+              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
                 activeTab === 'hotkeys'
                   ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
                   : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
               }`}
             >
-              <span className="text-base">⌨</span> Hotkeys & Overlay
+              Hotkeys & Overlay
             </button>
 
             <button
               onClick={() => setActiveTab('article')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
+              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
                 activeTab === 'article'
                   ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
                   : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
               }`}
             >
-              <span className="text-base">📖</span> Built in One Night
+              Built in One Night
             </button>
           </nav>
 
@@ -348,12 +353,9 @@ export default function Dashboard() {
                 className="flex flex-col gap-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    ⚙ Groq API & Whisper Model Settings
+                  <h2 className="text-xl font-bold text-white">
+                    Groq API & Whisper Model Settings
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Configure your Groq Cloud API credentials and Whisper model behavior.
-                  </p>
                 </div>
 
                 <form onSubmit={handleSaveApiKey} className="flex flex-col gap-4">
@@ -393,17 +395,20 @@ export default function Dashboard() {
 
                   <div className="flex flex-col gap-3 mt-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-xs font-semibold text-zinc-300">In-Depth System Prompt Presets</label>
-                      <span className="text-[11px] text-zinc-400 font-mono">1-Click Apply</span>
+                      <label className="text-xs font-semibold text-zinc-300">System Prompt Presets</label>
+                      <span className="text-[11px] text-zinc-400 font-mono">Hover to preview • 1-Click Apply</span>
                     </div>
 
                     <div className="flex flex-col gap-2.5">
                       {PROMPT_PRESETS.map((preset) => {
                         const isSelected = systemPrompt.trim() === preset.prompt.trim();
+                        const isHovered = hoveredPresetId === preset.id;
                         return (
                           <button
                             key={preset.id}
                             type="button"
+                            onMouseEnter={() => setHoveredPresetId(preset.id)}
+                            onMouseLeave={() => setHoveredPresetId(null)}
                             onClick={() => handleApplySystemPromptPreset(preset.prompt)}
                             className={`p-3.5 rounded-xl flex flex-col gap-1 transition cursor-pointer text-left border ${
                               isSelected
@@ -419,9 +424,18 @@ export default function Dashboard() {
                                 </span>
                               )}
                             </div>
-                            <p className={`text-[11px] leading-relaxed ${isSelected ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                              {preset.desc}
-                            </p>
+                            <AnimatePresence>
+                              {isHovered && (
+                                <motion.p
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  className={`text-[11px] leading-relaxed mt-1 overflow-hidden ${isSelected ? 'text-zinc-700' : 'text-zinc-400'}`}
+                                >
+                                  {preset.desc}
+                                </motion.p>
+                              )}
+                            </AnimatePresence>
                           </button>
                         );
                       })}
@@ -460,12 +474,9 @@ export default function Dashboard() {
                 className="flex flex-col gap-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    🎙 Audio Input & Microphone Configuration
+                  <h2 className="text-xl font-bold text-white">
+                    Audio Input Devices
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Select your active recording device and calibrate volume threshold parameters.
-                  </p>
                 </div>
 
                 <div className="flex flex-col gap-4">
@@ -481,7 +492,7 @@ export default function Dashboard() {
                         }}
                         className="text-[11px] text-zinc-400 hover:text-white underline font-mono cursor-pointer"
                       >
-                        🔄 Refresh Devices
+                        Refresh Devices
                       </button>
                     </div>
                     <select
@@ -492,7 +503,7 @@ export default function Dashboard() {
                       <option value="default">Default Windows Microphone (System Default)</option>
                       {audioDevices.map((dev, idx) => (
                         <option key={idx} value={dev}>
-                          🎙 {dev}
+                          {dev}
                         </option>
                       ))}
                     </select>
@@ -515,7 +526,7 @@ export default function Dashboard() {
                             : 'skeuo-raised-btn text-zinc-200 hover:text-white border-zinc-700'
                         }`}
                       >
-                        {isTestingMic ? '⏹ Stop Testing' : '🧪 Test Microphone Live'}
+                        {isTestingMic ? 'Stop Testing' : 'Test Microphone Live'}
                       </button>
                     </div>
 
@@ -549,9 +560,6 @@ export default function Dashboard() {
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-zinc-400">
-                      Speak into your headset or microphone to verify live volume detection. Click <strong>Test Microphone Live</strong> to begin testing.
-                    </p>
                   </div>
                 </div>
               </motion.div>
@@ -567,12 +575,9 @@ export default function Dashboard() {
                 className="flex flex-col gap-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    ⚡ Operating Mode Selection
+                  <h2 className="text-xl font-bold text-white">
+                    Operating Mode Selection
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Choose how Rusper interacts with Windows and processes speech dictation.
-                  </p>
                 </div>
 
                 {hotkeySaveStatus && (
@@ -585,49 +590,78 @@ export default function Dashboard() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={() => handleSetDictationMode('interactive')}
-                      className={`p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
+                      className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
                         dictationMode === 'interactive'
                           ? 'bg-white text-black border-white/50 shadow-md font-bold'
                           : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
                       }`}
                     >
+                      {dictationMode === 'interactive' && (
+                        <svg className="w-5 h-5 text-black absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" />
+                        </svg>
+                      )}
                       <div className="flex items-center gap-2.5">
-                        <span className="text-lg">💬</span>
                         <span className="text-sm font-bold">Interactive Review Mode</span>
                       </div>
                       <p className={`text-xs leading-relaxed ${dictationMode === 'interactive' ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                        Click hotkey once to start recording. Displays a floating review pop-up with transcribed text, allowing manual inspection before clicking <strong>Inject [Enter]</strong> or <strong>Cancel [Esc]</strong>.
+                        Click hotkey once to record. Displays a floating pop-up before injecting text.
                       </p>
                     </button>
 
                     <button
                       onClick={() => handleSetDictationMode('push_to_talk')}
-                      className={`p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
+                      className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
                         dictationMode === 'push_to_talk'
                           ? 'bg-white text-black border-white/50 shadow-md font-bold'
                           : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
                       }`}
                     >
+                      {dictationMode === 'push_to_talk' && (
+                        <svg className="w-5 h-5 text-black absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" />
+                        </svg>
+                      )}
                       <div className="flex items-center gap-2.5">
-                        <span className="text-lg">⚡</span>
                         <span className="text-sm font-bold">Push-to-Talk Mode</span>
                       </div>
                       <p className={`text-xs leading-relaxed ${dictationMode === 'push_to_talk' ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                        Press and hold hotkey while speaking. Releasing the key automatically transcribes your voice and <strong>pastes text directly into your active window</strong> without any extra clicks.
+                        Hold hotkey while speaking. Releasing key transcribes & pastes text directly into active app.
                       </p>
                     </button>
                   </div>
 
-                  <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-2 text-xs text-zinc-300">
-                    <span className="font-semibold text-white flex items-center gap-1.5">
-                      🛡️ Built-in Smart Dictation Safeguards & Limits
-                    </span>
-                    <ul className="text-[11px] text-zinc-400 leading-relaxed flex flex-col gap-1.5 list-disc pl-4">
-                      <li><strong>90-Second Max Recording Limit</strong>: Automatic hard stop and processing after 1 min 30 sec to guarantee sub-second transcription latency.</li>
-                      <li><strong>15-Second Silence Auto-Pause</strong>: Auto-pauses audio recording if no speech volume is detected for 15 consecutive seconds.</li>
-                      <li><strong>Active Text Field Validation</strong>: Checks Win32 foreground window before pasting; alerts <em>"⚠️ No active text field detected"</em> if clicked outside an app.</li>
-                      <li><strong>Instant Undo Support</strong>: Supports reverting the last inserted dictation chunk instantly via <strong>↩ Undo</strong> button or <code>Ctrl + Z</code>.</li>
-                    </ul>
+                  {/* Collapsible Accordion: Smart Dictation Safeguards */}
+                  <div className="skeuo-inner-socket rounded-2xl border border-white/[0.04] overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setIsSafeguardsOpen(!isSafeguardsOpen)}
+                      className="w-full px-4 py-3.5 flex items-center justify-between font-semibold text-white cursor-pointer hover:bg-white/5 transition"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>🛡️</span> Built-in Smart Dictation Safeguards & Limits
+                      </span>
+                      <span className="text-xs font-mono text-zinc-400">
+                        {isSafeguardsOpen ? '▲ Hide' : '▼ View Details'}
+                      </span>
+                    </button>
+                    <AnimatePresence>
+                      {isSafeguardsOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="px-4 pb-4 border-t border-white/[0.04]"
+                        >
+                          <ul className="text-[11px] text-zinc-400 leading-relaxed flex flex-col gap-2 list-disc pl-4 mt-3 font-mono">
+                            <li><strong>90-Second Max Recording Limit</strong>: Hard stop and auto-processing after 1 min 30 sec.</li>
+                            <li><strong>15-Second Silence Auto-Pause</strong>: Auto-pauses recording if no audio volume is detected for 15s.</li>
+                            <li><strong>Active Text Field Validation</strong>: Checks Win32 active app window before pasting.</li>
+                            <li><strong>Instant Undo Support</strong>: Revert last dictation chunk via <strong>↩ Undo</strong> button or <code>Ctrl + Z</code>.</li>
+                          </ul>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </motion.div>
@@ -643,12 +677,9 @@ export default function Dashboard() {
                 className="flex flex-col gap-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    ⌨ Hotkeys & Overlay Customization
+                  <h2 className="text-xl font-bold text-white">
+                    Hotkeys & Overlay
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Customize your global dictation trigger shortcut and overlay positioning.
-                  </p>
                 </div>
 
                 {hotkeySaveStatus && (
@@ -661,7 +692,6 @@ export default function Dashboard() {
                 <div className="skeuo-inner-socket rounded-2xl p-4 flex items-center justify-between">
                   <div>
                     <h3 className="text-xs font-semibold text-white">Current Global Trigger Shortcut</h3>
-                    <p className="text-[11px] text-zinc-400">Invokes the floating dictation pop-up anywhere in Windows</p>
                   </div>
                   <span className="skeuo-raised-btn px-4 py-2 rounded-xl text-xs font-mono font-bold">
                     {selectedShortcut}
@@ -728,7 +758,7 @@ export default function Dashboard() {
                     </select>
 
                     <button
-                      onClick={handleApplyCustomShortcut}
+                      onClick={handleSaveCustomShortcut}
                       className="skeuo-inject-btn px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ml-auto"
                     >
                       Set Custom Hotkey
@@ -773,48 +803,56 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {/* Tab 4: Built in One Night Article */}
+            {/* Tab 5: Built in One Night Article */}
             {activeTab === 'article' && (
               <motion.div
                 key="article"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-6 max-w-3xl"
+                className="article-section flex flex-col gap-6 max-w-3xl"
               >
                 <div>
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono mb-1">
+                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-article-body mb-1">
                     <span>ESSAY</span> • <span>AUGUST 2026</span> • <span>5 MIN READ</span>
                   </div>
-                  <h2 className="text-xl font-extrabold text-white tracking-tight leading-snug">
+                  <h2 className="font-article-heading text-2xl font-extrabold text-white tracking-tight leading-snug">
                     Crafting Rusper: How an AI Voice Dictation Engine Was Built Overnight
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">
+                  <p className="font-article-heading text-xs text-zinc-300 mt-1">
                     An architectural retrospective on pairing Rust audio threads with Groq Whisper and modern React skeuomorphs.
                   </p>
                 </div>
 
-                <article className="prose prose-invert prose-xs text-zinc-300 leading-relaxed flex flex-col gap-4 font-sans text-xs">
+                <article className="font-article-body text-zinc-300 leading-relaxed flex flex-col gap-4 text-xs">
                   <p>
                     The story of <strong>Rusper</strong> began with a simple frustration: voice dictation tools on desktop were either bloated, slow, or locked behind expensive monthly subscriptions. We wanted something instant—a sleek utility that stays ready in the Windows system tray and converts speech into active text within milliseconds of pressing a hotkey.
                   </p>
 
-                  <h3 className="text-sm font-bold text-white mt-2">1. The Multi-Threaded Audio Pipeline in Rust</h3>
+                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
+                    1. The Multi-Threaded Audio Pipeline in Rust
+                  </h3>
                   <p>
                     Using Tauri v2 and Rust, we leveraged <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">cpal</code> to hook directly into the Windows WASAPI audio subsystem at 16kHz mono sampling. Audio samples are streamed asynchronously into an in-memory buffer and flushed to disk using <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">hound::WavWriter</code>.
                   </p>
 
-                  <h3 className="text-sm font-bold text-white mt-2">2. Sub-Second Transcriptions with Groq Whisper</h3>
+                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
+                    2. Sub-Second Transcriptions with Groq Whisper
+                  </h3>
                   <p>
                     The moment you hit <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">Enter</kbd>, the recorded audio payload is posted via multipart binary stream directly to Groq Cloud's ultra-fast Whisper engine (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">whisper-large-v3-turbo</code>). Transcriptions return in under 300 milliseconds.
                   </p>
 
-                  <h3 className="text-sm font-bold text-white mt-2">3. Clipboard Injection & Enigo Key Simulation</h3>
+                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
+                    3. Clipboard Injection & Enigo Key Simulation
+                  </h3>
                   <p>
                     Once transcribed, Rusper writes the text payload directly to the OS clipboard via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">arboard</code> and simulates a physical <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">Ctrl + V</kbd> keystroke via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">enigo</code>, pasting your speech directly into Notepad, Word, or your web browser.
                   </p>
 
-                  <h3 className="text-sm font-bold text-white mt-2">4. Skeuomorphic 3D Beveled Design</h3>
+                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
+                    4. Skeuomorphic 3D Beveled Design
+                  </h3>
                   <p>
                     Finally, the interface was crafted using a tactile 3D beveled dark charcoal chassis (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">#171717</code>) with recessed obsidian sockets (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">#070707</code>), top specular light catches, and glowing white waveform animations.
                   </p>

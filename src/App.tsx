@@ -211,8 +211,8 @@ export default function App() {
         />
         {/* Header navigation */}
         <div className="flex items-center justify-between text-[11px] text-zinc-400">
-          <span className="font-bold text-white tracking-wider uppercase text-[11px]">
-            RUSPER
+          <span className="font-bold text-white tracking-wider text-xs uppercase">
+            Rusper
           </span>
           {dictationMode !== 'push_to_talk' && (
             <button
