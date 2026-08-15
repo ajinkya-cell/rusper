@@ -30,4 +30,8 @@ tokio-util = { version = "0.7", features = ["codec"] }
 dotenvy = "0.15"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.52", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dwm",
+    "Win32_Foundation"
+] }

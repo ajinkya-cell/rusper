@@ -80,7 +80,8 @@ pub fn run() {
                         }
 
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = commands::sync_window_size(window.clone(), mode.clone());
+                            commands::apply_pure_window_attributes(&window);
+                            let _ = commands::sync_window_size(app.clone(), mode.clone());
                             let _ = window.show();
                             if mode != "push_to_talk" {
                                 let _ = window.set_focus();
@@ -133,23 +134,14 @@ pub fn run() {
                 *guard = saved_mode.clone();
             }
 
-            // Dynamic Window Size & Position based on dictation mode
+            // Dynamic Window Size & Position based on dictation mode and saved overlay position
             if let Some(window) = app.get_webview_window("main") {
-                if let Ok(Some(monitor)) = window.primary_monitor() {
-                    let monitor_size = monitor.size();
-                    let scale_factor = monitor.scale_factor();
-                    let (w_df, h_df) = if saved_mode == "push_to_talk" {
-                        (260.0, 52.0)
-                    } else {
-                        (360.0, 200.0)
-                    };
-                    let window_width = (w_df * scale_factor) as u32;
-                    let window_height = (h_df * scale_factor) as u32;
-                    let x = (monitor_size.width as i32 - window_width as i32) / 2;
-                    let y = monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32;
-                    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-                    let _ = window.set_size(tauri::PhysicalSize::new(window_width, window_height));
-                }
+                commands::apply_pure_window_attributes(&window);
+                let handle = app.handle().clone();
+                let mode_clone = saved_mode.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = commands::sync_window_size(handle, mode_clone).await;
+                });
             }
 
             // Load Saved Audio Device
@@ -201,6 +193,7 @@ pub fn run() {
             get_saved_hotkey,
             register_hotkey,
             set_overlay_position,
+            get_overlay_position,
             get_dictation_mode,
             set_dictation_mode,
             get_system_prompt,

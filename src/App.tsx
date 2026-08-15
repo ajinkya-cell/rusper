@@ -4,33 +4,38 @@ import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './Dashboard';
 
-const WAVE_BAR_COUNT = 16;
-
 function WaveformMarquee({ compact }: { compact?: boolean }) {
-  const bars = Array.from({ length: WAVE_BAR_COUNT }, (_, index) => index);
+  const barCount = compact ? 16 : 10;
+  const bars = Array.from({ length: barCount }, (_, index) => index);
 
   return (
-    <div className={`flex items-center justify-center gap-1.5 px-2 ${compact ? 'h-6 py-0.5' : 'h-10'}`}>
-      {bars.map((index) => (
-        <motion.span
-          key={index}
-          className={`block shrink-0 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)] ${
-            compact ? 'w-1' : 'w-1.5'
-          }`}
-          animate={{
-            height: compact
-              ? ['15%', `${20 + (index % 6) * 5}%`, '45%', '15%']
-              : ['20%', `${30 + (index % 8) * 7}%`, '65%', '20%'],
-          }}
-          transition={{
-            duration: 0.35 + (index % 4) * 0.1,
-            ease: 'linear',
-            repeat: Infinity,
-            repeatType: 'reverse',
-            delay: index * 0.05,
-          }}
-        />
-      ))}
+    <div className={`flex items-center justify-center gap-1.5 px-2 ${compact ? 'h-8 py-0.5' : 'h-14'}`}>
+      {bars.map((index) => {
+        const taper = compact ? 1 : Math.sin(((index + 1) / (barCount + 1)) * Math.PI);
+        const minH = compact ? 20 : Math.round(15 * taper + 10);
+        const midH = compact ? 35 + (index % 6) * 12 : Math.round((35 + (index % 5) * 14) * taper);
+        const maxH = compact ? 95 : Math.round(95 * taper + 5);
+
+        return (
+          <motion.span
+            key={index}
+            className={`block shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] ${
+              compact ? 'w-1.5' : 'w-2'
+            }`}
+            animate={{
+              height: [`${minH}%`, `${midH}%`, `${maxH}%`, `${minH}%`],
+              opacity: [0.75, 1, 0.75],
+            }}
+            transition={{
+              duration: 0.35 + (index % 4) * 0.08,
+              ease: 'easeInOut',
+              repeat: Infinity,
+              repeatType: 'reverse',
+              delay: index * 0.04,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -44,6 +49,7 @@ export default function App() {
   const [viewState, setViewState] = useState<'recording' | 'processing' | 'review' | 'settings'>('recording');
   const [resultText, setResultText] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [dictationMode, setDictationMode] = useState<'interactive' | 'push_to_talk'>('interactive');
   const [toast, setToast] = useState<{ message: string; type: 'warning' | 'info' | 'success' } | null>(null);
@@ -175,13 +181,13 @@ export default function App() {
       setTimeout(() => {
         setSaveStatus(null);
         setViewState('recording');
-      }, 1000);
+      }, 900);
     } catch (err) {
       setSaveStatus(`Failed to save: ${err}`);
     }
   };
 
-  // Keyboard Shortcuts (Enter / Esc)
+  // Keyboard Shortcuts (Enter / Esc / R)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
@@ -195,12 +201,15 @@ export default function App() {
       } else if (e.key === 'Escape') {
         e.preventDefault();
         handleCancelPopover();
+      } else if ((e.key === 'r' || e.key === 'R') && viewState === 'review' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        handleRedoRecording();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewState, handleStopRecording, handleAcceptText, handleCancelPopover]);
+  }, [viewState, handleStopRecording, handleAcceptText, handleCancelPopover, handleRedoRecording]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -221,35 +230,32 @@ export default function App() {
     >
       <motion.div
         tabIndex={-1}
-        initial={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none focus:outline-none border border-white/[0.08] shadow-2xl transition-all duration-200 ${
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none focus:outline-none transition-all duration-200 ${
           isPushToTalk
-            ? 'w-[260px] h-[52px] rounded-full px-2.5 py-1.5 flex flex-row items-center justify-between'
-            : 'w-[360px] h-[200px] p-4 rounded-2xl flex flex-col justify-between'
+            ? 'w-[260px] h-[52px] rounded-full px-3 py-1.5 flex flex-row items-center justify-center'
+            : 'w-[360px] h-[200px] p-3.5 rounded-2xl flex flex-col justify-between'
         }`}
       >
-        {/* Top Prismatic Specular Highlight Line */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] z-20 rounded-full"
-          style={{
-            background:
-              'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.22) 70%, transparent 100%)',
-          }}
-        />
 
         {/* Top Header Navigation (Interactive Mode Only) */}
         {!isPushToTalk && (
-          <div className="flex items-center justify-between text-[11px] text-zinc-400 shrink-0">
-            <span className="font-bold text-white tracking-wider text-xs uppercase">
+          <div className="flex items-center justify-between text-zinc-400 shrink-0 pb-1 border-b border-white/5">
+            <span className="font-display italic text-2xl text-white font-normal tracking-wide">
               Rusper
             </span>
             <button
               onClick={() => setViewState(viewState === 'settings' ? 'recording' : 'settings')}
-              title="Configure API Key"
-              className="hover:text-white transition cursor-pointer font-medium"
+              title="Configure Settings"
+              className="font-ui text-xs text-zinc-400 hover:text-white transition cursor-pointer font-medium flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/5"
             >
-              ⚙ Settings
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Settings</span>
             </button>
           </div>
         )}
@@ -261,12 +267,12 @@ export default function App() {
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className={`p-2 rounded-xl text-[10px] font-semibold flex items-center justify-between shadow-lg border ${
+              className={`p-2 rounded-xl text-[11px] font-ui font-medium flex items-center justify-between shadow-lg border ${
                 toast.type === 'warning'
-                  ? 'bg-amber-950/90 border-amber-700 text-amber-200'
+                  ? 'bg-amber-950/95 border-amber-600/70 text-amber-200'
                   : toast.type === 'success'
-                  ? 'bg-emerald-950/90 border-emerald-700 text-emerald-200'
-                  : 'bg-zinc-900 border-zinc-700 text-white'
+                  ? 'bg-emerald-950/95 border-emerald-600/70 text-emerald-200'
+                  : 'bg-zinc-900/95 border-zinc-700 text-white'
               }`}
             >
               <span>{toast.message}</span>
@@ -280,22 +286,32 @@ export default function App() {
           {viewState === 'recording' && (
             <motion.div
               key="recording"
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`flex items-center justify-between gap-3 ${isPushToTalk ? 'w-full h-full' : 'h-12'}`}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className={`flex ${isPushToTalk ? 'items-center justify-center w-full h-full' : 'flex-col justify-center flex-1 gap-2'}`}
             >
-              <div className={`skeuo-inner-socket flex-1 flex items-center justify-center px-1 overflow-hidden ${isPushToTalk ? 'h-9 rounded-full' : 'h-12 rounded-xl'}`}>
-                <WaveformMarquee compact={isPushToTalk} />
-              </div>
-              {!isPushToTalk && (
-                <button
-                  onClick={handleStopRecording}
-                  title="Done (Enter)"
-                  className="skeuo-raised-btn w-11 h-11 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition cursor-pointer hover:bg-zinc-100"
-                >
-                  <img src="/check-circle.svg" alt="Done" className="w-6 h-6 text-black" />
-                </button>
+              {isPushToTalk ? (
+                <div className="flex-1 flex items-center justify-center overflow-hidden">
+                  <WaveformMarquee compact={true} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 w-full my-auto">
+                  <div className="flex-1 flex items-center justify-center px-1 overflow-hidden">
+                    <WaveformMarquee compact={false} />
+                  </div>
+                  <button
+                    onClick={handleStopRecording}
+                    title="Done & Transcribe (Enter)"
+                    className="skeuo-raised-btn text-xs font-ui font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer select-none text-zinc-950 shrink-0"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Done</span>
+                    <span className="font-code text-[10px] opacity-60 font-bold ml-0.5">[↵]</span>
+                  </button>
+                </div>
               )}
             </motion.div>
           )}
@@ -304,18 +320,18 @@ export default function App() {
           {viewState === 'processing' && (
             <motion.div
               key="processing"
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`skeuo-inner-socket flex items-center justify-center gap-2.5 overflow-hidden ${
-                isPushToTalk ? 'flex-1 h-9 rounded-full px-3' : 'h-12 rounded-xl px-4 text-xs border border-white/[0.04]'
+              exit={{ opacity: 0, scale: 0.96 }}
+              className={`flex items-center justify-center gap-2.5 overflow-hidden ${
+                isPushToTalk ? 'flex-1 h-9 rounded-full px-2' : 'h-14 rounded-xl px-4 my-auto'
               }`}
             >
               <div className="relative w-4 h-4 flex items-center justify-center shrink-0">
                 <div className="absolute inset-0 border-2 border-white/20 border-t-white rounded-full animate-spin" />
               </div>
-              <span className="font-semibold text-white tracking-wide text-xs truncate">
-                {isPushToTalk ? 'Transcribing...' : 'Processing with Groq Whisper...'}
+              <span className="font-ui font-medium text-white tracking-wide text-xs truncate">
+                Transcribing...
               </span>
             </motion.div>
           )}
@@ -324,33 +340,38 @@ export default function App() {
           {viewState === 'review' && (
             <motion.div
               key="review"
-              initial={{ opacity: 0, y: 5 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="flex flex-col gap-3"
+              exit={{ opacity: 0, y: -4 }}
+              className="flex flex-col justify-between flex-1 gap-2 pt-0.5"
             >
-              <div className="skeuo-inner-socket rounded-xl p-3 text-xs text-zinc-100 max-h-24 overflow-y-auto break-words leading-relaxed font-mono">
+              <div className="skeuo-inner-socket px-3.5 py-3 rounded-xl text-xs text-zinc-100 max-h-24 overflow-y-auto break-words leading-relaxed font-code select-text">
                 {resultText}
               </div>
-              <div className="flex items-center justify-end gap-2">
+
+              <div className="flex items-center justify-end gap-2 pt-0.5">
                 <button
                   onClick={handleRedoRecording}
-                  title="Discard & Re-record audio dictation"
-                  className="skeuo-raised-btn-dark text-xs px-3 py-2 rounded-xl transition cursor-pointer text-zinc-300 border-none flex items-center gap-1 hover:text-white"
+                  title="Discard & Re-record (R)"
+                  className="skeuo-raised-btn-dark font-ui text-xs px-2.5 py-1.5 rounded-lg cursor-pointer text-zinc-200 flex items-center gap-1 hover:text-white"
                 >
-                  🔁 Redo
+                  <span>🔁 Redo</span>
+                  <span className="font-code text-[10px] text-zinc-400 font-semibold">[R]</span>
                 </button>
                 <button
                   onClick={handleCancelPopover}
-                  className="skeuo-raised-btn-dark text-xs px-3.5 py-2 rounded-xl transition cursor-pointer text-zinc-300 border-none"
+                  title="Cancel & Dismiss (Esc)"
+                  className="skeuo-raised-btn-dark font-ui text-xs px-2.5 py-1.5 rounded-lg cursor-pointer text-zinc-200 hover:text-white"
                 >
-                  ✕ Cancel [Esc]
+                  ✕ Cancel <span className="font-code text-[10px] text-zinc-400">[Esc]</span>
                 </button>
                 <button
                   onClick={handleAcceptText}
-                  className="skeuo-inject-btn text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                  title="Paste transcription into active app (Enter)"
+                  className="skeuo-raised-btn font-ui text-xs font-bold px-3.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-1 tracking-tight text-zinc-950"
                 >
-                  ✓ Inject [↵]
+                  <span>✓ Paste</span>
+                  <span className="font-code text-[10px] opacity-70 font-bold">[↵]</span>
                 </button>
               </div>
             </motion.div>
@@ -360,47 +381,60 @@ export default function App() {
           {viewState === 'settings' && (
             <motion.form
               key="settings"
-              initial={{ opacity: 0, y: 5 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
+              exit={{ opacity: 0, y: -4 }}
               onSubmit={handleSaveApiKey}
-              className="flex flex-col gap-2.5 py-0.5"
+              className="flex flex-col gap-2 py-0.5"
             >
-              <label className="text-[11px] font-medium text-zinc-300">Configure Groq API Key</label>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder="gsk_..."
-                className="skeuo-sub-well w-full rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition font-mono"
-              />
-              {saveStatus && (
-                <span className="text-[10px] text-zinc-300 font-medium">{saveStatus}</span>
-              )}
-              <div className="flex items-center justify-between mt-1">
+              <div className="flex items-center justify-between">
+                <label className="font-ui text-xs font-medium text-zinc-200">Groq API Key</label>
                 <a
                   href="https://console.groq.com/keys"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[10px] text-zinc-400 hover:text-white underline"
+                  className="font-ui text-[11px] text-zinc-400 hover:text-white underline"
                 >
                   Get Key ↗
                 </a>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewState('recording')}
-                    className="skeuo-raised-btn-dark text-xs px-3 py-1.5 rounded-lg text-zinc-300 cursor-pointer border-none"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    className="skeuo-raised-btn text-xs font-semibold px-3.5 py-1.5 rounded-lg cursor-pointer transition border-none"
-                  >
-                    Save Key
-                  </button>
-                </div>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="gsk_..."
+                  className="skeuo-sub-well w-full rounded-xl px-3 py-1.5 pr-8 text-xs text-white placeholder-zinc-500 focus:outline-none transition font-code"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2.5 text-zinc-400 hover:text-white text-xs cursor-pointer"
+                  title={showApiKey ? 'Hide Key' : 'Show Key'}
+                >
+                  {showApiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
+
+              {saveStatus && (
+                <span className="font-ui text-[11px] text-zinc-300 font-medium">{saveStatus}</span>
+              )}
+
+              <div className="flex items-center justify-end gap-2 mt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewState('recording')}
+                  className="skeuo-raised-btn-dark font-ui text-xs px-3 py-1.5 rounded-lg text-zinc-300 cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="skeuo-raised-btn font-ui text-xs font-semibold px-4 py-1.5 rounded-lg cursor-pointer transition text-zinc-950"
+                >
+                  Save Key
+                </button>
               </div>
             </motion.form>
           )}
@@ -409,3 +443,4 @@ export default function App() {
     </main>
   );
 }
+

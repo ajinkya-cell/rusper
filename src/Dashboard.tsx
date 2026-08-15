@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type Tab = 'api' | 'audio' | 'mode' | 'hotkeys' | 'article';
+type Tab = 'api' | 'audio' | 'mode' | 'hotkeys' | 'prompts' | 'article';
 
 const PRESET_SHORTCUTS = [
   'ScrollLock',
@@ -103,7 +103,6 @@ export default function Dashboard() {
   const [selectedModel, setSelectedModel] = useState('whisper-large-v3-turbo');
   const [systemPrompt, setSystemPrompt] = useState(PROMPT_PRESETS[0].prompt);
 
-  // Hotkey & Overlay Customization States
   const [selectedShortcut, setSelectedShortcut] = useState('ScrollLock');
   const [customModifier, setCustomModifier] = useState('None');
   const [customKey, setCustomKey] = useState('ScrollLock');
@@ -113,154 +112,92 @@ export default function Dashboard() {
   const [hoveredPresetId, setHoveredPresetId] = useState<string | null>(null);
   const [isSafeguardsOpen, setIsSafeguardsOpen] = useState<boolean>(false);
 
-  // Audio Devices State
   const [audioDevices, setAudioDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('default');
   const [isTestingMic, setIsTestingMic] = useState<boolean>(false);
   const [micVolume, setMicVolume] = useState<number>(0);
 
   useEffect(() => {
-    invoke<string | null>('get_api_key')
-      .then((key) => {
-        if (key) setApiKey(key);
-      })
-      .catch(() => {});
-
-    invoke<string>('get_saved_hotkey')
-      .then((hk) => {
-        if (hk) setSelectedShortcut(hk);
-      })
-      .catch(() => {});
-
-    invoke<string>('get_dictation_mode')
-      .then((m) => {
-        if (m === 'push_to_talk' || m === 'interactive') {
-          setDictationModeState(m);
-        }
-      })
-      .catch(() => {});
-
-    invoke<string>('get_system_prompt')
-      .then((prompt) => {
-        if (prompt && prompt.trim()) setSystemPrompt(prompt);
-      })
-      .catch(() => {});
-
-    invoke<string[]>('get_audio_devices')
-      .then((devs) => {
-        if (devs && devs.length > 0) setAudioDevices(devs);
-      })
-      .catch(() => {});
-
-    invoke<string | null>('get_selected_audio_device')
-      .then((dev) => {
-        if (dev) setSelectedDevice(dev);
-      })
-      .catch(() => {});
+    invoke<string | null>('get_api_key').then((key) => { if (key) setApiKey(key); }).catch(() => {});
+    invoke<string>('get_saved_hotkey').then((hk) => { if (hk) setSelectedShortcut(hk); }).catch(() => {});
+    invoke<string>('get_dictation_mode').then((m) => { if (m === 'push_to_talk' || m === 'interactive') setDictationModeState(m); }).catch(() => {});
+    invoke<string>('get_system_prompt').then((prompt) => { if (prompt && prompt.trim()) setSystemPrompt(prompt); }).catch(() => {});
+    invoke<string[]>('get_audio_devices').then((devs) => { if (devs && devs.length > 0) setAudioDevices(devs); }).catch(() => {});
+    invoke<string | null>('get_selected_audio_device').then((dev) => { if (dev) setSelectedDevice(dev); }).catch(() => {});
+    invoke<string>('get_overlay_position').then((pos) => { if (pos) setOverlayPosition(pos); }).catch(() => {});
   }, []);
 
-  // Listen for live mic test volume
   useEffect(() => {
-    const unlisten = listen<number>('test-audio-volume', (event) => {
-      setMicVolume(event.payload);
-    });
-    return () => {
-      unlisten.then((fn: () => void) => fn());
-    };
+    const unlisten = listen<number>('test-audio-volume', (event) => setMicVolume(event.payload));
+    return () => { unlisten.then((fn: () => void) => fn()); };
   }, []);
 
   const handleDeviceChange = async (deviceName: string) => {
     setSelectedDevice(deviceName);
     try {
       await invoke('set_selected_audio_device', { deviceName });
-      setHotkeySaveStatus(`Microphone changed to "${deviceName}" ✓`);
+      setHotkeySaveStatus(`Microphone set to "${deviceName}" ✓`);
       setTimeout(() => setHotkeySaveStatus(null), 3000);
-    } catch (err) {
-      console.error('Device change error:', err);
-    }
+    } catch (err) { console.error('Device change error:', err); }
   };
 
   const toggleMicTest = async () => {
     if (isTestingMic) {
       setIsTestingMic(false);
       setMicVolume(0);
-      try {
-        await invoke('stop_mic_test');
-      } catch (err) {
-        console.error('Stop mic test error:', err);
-      }
+      try { await invoke('stop_mic_test'); } catch (err) { console.error('Stop mic test error:', err); }
     } else {
       setIsTestingMic(true);
-      try {
-        await invoke('start_mic_test');
-        setHotkeySaveStatus('Testing microphone live... Speak into your mic! 🎙️');
-      } catch (err) {
-        setIsTestingMic(false);
-        setHotkeySaveStatus(`Mic test error: ${err}`);
-      }
+      try { await invoke('start_mic_test'); } catch (err) { console.error('Start mic test error:', err); setIsTestingMic(false); }
     }
   };
 
-  const handleApplySystemPromptPreset = async (presetPrompt: string) => {
-    setSystemPrompt(presetPrompt);
+  const handleSaveApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiKey.trim()) { setSaveStatus('Please enter a valid API key'); return; }
     try {
-      await invoke('save_system_prompt', { prompt: presetPrompt });
-      setSaveStatus('System prompt preset saved! ✓');
+      await invoke('save_api_key', { key: apiKey.trim() });
+      setSaveStatus('API key saved successfully ✓');
       setTimeout(() => setSaveStatus(null), 3000);
-    } catch (err) {
-      setSaveStatus(`Failed to save preset: ${err}`);
-    }
+    } catch (err) { setSaveStatus(`Failed to save: ${err}`); }
+  };
+
+  const handleApplySystemPromptPreset = async (promptText: string) => {
+    setSystemPrompt(promptText);
+    try {
+      await invoke('save_system_prompt', { prompt: promptText });
+      setSaveStatus('System prompt updated & active ✓');
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err) { setSaveStatus(`Failed to save prompt: ${err}`); }
   };
 
   const handleSetDictationMode = async (mode: 'interactive' | 'push_to_talk') => {
     setDictationModeState(mode);
     try {
       await invoke('set_dictation_mode', { mode });
-      setHotkeySaveStatus(`Dictation mode updated to ${mode === 'push_to_talk' ? '"Push-to-Talk (Instant Direct Paste)"' : '"Interactive Review"'} ✓`);
-    } catch (err) {
-      setHotkeySaveStatus(`Mode update error: ${err}`);
-    }
-    setTimeout(() => setHotkeySaveStatus(null), 3000);
-  };
-
-  const handleSaveApiKey = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!apiKey.trim()) {
-      setSaveStatus('Please enter a valid API key');
-      return;
-    }
-    try {
-      await invoke('save_api_key', { key: apiKey.trim() });
-      setSaveStatus('API key saved securely! ✓');
-      setTimeout(() => setSaveStatus(null), 3000);
-    } catch (err) {
-      setSaveStatus(`Failed to save: ${err}`);
-    }
+      await invoke('sync_window_size', { mode }).catch(() => {});
+      setHotkeySaveStatus(`Mode switched to ${mode === 'interactive' ? 'Interactive Review' : 'Push-to-Talk'} ✓`);
+      setTimeout(() => setHotkeySaveStatus(null), 3000);
+    } catch (err) { console.error('Set mode error:', err); }
   };
 
   const handleApplyPresetShortcut = async (shortcut: string) => {
     setSelectedShortcut(shortcut);
     try {
       await invoke('register_hotkey', { shortcut });
-      setHotkeySaveStatus(`Global shortcut updated to "${shortcut}" ✓`);
-    } catch (err) {
-      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
-    }
+      setHotkeySaveStatus(`Global trigger registered: "${shortcut}" ✓`);
+    } catch (err) { setHotkeySaveStatus(`Hotkey registration failed: ${err}`); }
     setTimeout(() => setHotkeySaveStatus(null), 3000);
   };
 
   const handleSaveCustomShortcut = async () => {
     let shortcut = customKey;
-    if (customModifier !== 'None') {
-      shortcut = `${customModifier} + ${customKey}`;
-    }
+    if (customModifier !== 'None') shortcut = `${customModifier} + ${customKey}`;
     setSelectedShortcut(shortcut);
     try {
       await invoke('register_hotkey', { shortcut });
       setHotkeySaveStatus(`Custom shortcut registered: "${shortcut}" ✓`);
-    } catch (err) {
-      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
-    }
+    } catch (err) { setHotkeySaveStatus(`Hotkey registration failed: ${err}`); }
     setTimeout(() => setHotkeySaveStatus(null), 3000);
   };
 
@@ -268,311 +205,140 @@ export default function Dashboard() {
     setOverlayPosition(posId);
     try {
       await invoke('set_overlay_position', { position: posId });
-      setHotkeySaveStatus(`Overlay position updated to "${posId.replace('-', ' ')}" ✓`);
-    } catch (err) {
-      setHotkeySaveStatus(`Position update error: ${err}`);
-    }
+      setHotkeySaveStatus(`Overlay position set to "${posId.replace('-', ' ')}" ✓`);
+    } catch (err) { setHotkeySaveStatus(`Position update error: ${err}`); }
     setTimeout(() => setHotkeySaveStatus(null), 3000);
   };
 
+  const navTabs: { id: Tab; label: string; icon: string }[] = [
+    { id: 'api', label: 'AI Engine & Keys', icon: '⚡' },
+    { id: 'audio', label: 'Audio & Devices', icon: '🎙️' },
+    { id: 'mode', label: 'Dictation Modes', icon: '🎯' },
+    { id: 'hotkeys', label: 'Hotkeys & Overlay', icon: '⌨️' },
+    { id: 'prompts', label: 'Prompt Engine', icon: '🧠' },
+    { id: 'article', label: 'Architecture Essay', icon: '📖' },
+  ];
+
   return (
-    <div className="w-screen h-screen bg-[#111111] text-white flex flex-col font-sans select-none overflow-hidden">
-      {/* Top Header - Minimal Title Only */}
-      <header className="px-8 pt-6 pb-2 flex items-center justify-between shrink-0">
-        <h1 className="text-2xl font-bold tracking-wider text-white font-sans uppercase">
+    <div className="w-screen h-screen bg-[#0d0d10] text-white flex flex-col select-none overflow-hidden font-ui">
+      <header className="px-8 pt-5 pb-3 flex items-center justify-between shrink-0 border-b border-white/[0.06] bg-[#111114]">
+        <h1 className="font-display italic text-3xl font-normal tracking-wide text-white">
           Rusper
         </h1>
       </header>
 
-      {/* Main Layout: Sidebar + Content */}
-      <div className="flex flex-1 overflow-hidden p-6 gap-6 pt-2">
-        {/* Sidebar Navigation - Skeuomorphic Recessed Socket */}
-        <aside className="w-64 flex flex-col gap-3 shrink-0">
-          <nav className="skeuo-inner-socket rounded-2xl p-2.5 flex flex-col gap-2 border border-white/[0.04]">
-            <button
-              onClick={() => setActiveTab('api')}
-              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                activeTab === 'api'
-                  ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
-                  : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
-              }`}
-            >
-              API & Model Settings
-            </button>
-
-            <button
-              onClick={() => setActiveTab('audio')}
-              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                activeTab === 'audio'
-                  ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
-                  : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Audio Input Devices
-            </button>
-
-            <button
-              onClick={() => setActiveTab('mode')}
-              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                activeTab === 'mode'
-                  ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
-                  : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Operating Mode
-            </button>
-
-            <button
-              onClick={() => setActiveTab('hotkeys')}
-              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                activeTab === 'hotkeys'
-                  ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
-                  : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Hotkeys & Overlay
-            </button>
-
-            <button
-              onClick={() => setActiveTab('article')}
-              className={`w-full flex items-center px-4 py-3.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                activeTab === 'article'
-                  ? 'bg-white text-black font-bold border border-white/35 shadow-[0_2px_4px_rgba(0,0,0,0.25)]'
-                  : 'text-zinc-400 font-semibold hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Built in One Night
-            </button>
+      <div className="flex flex-1 overflow-hidden p-6 gap-6 pt-4">
+        <aside className="w-64 flex flex-col gap-4 shrink-0">
+          <nav className="skeuo-inner-socket rounded-2xl p-2 flex flex-col gap-1.5 border border-white/[0.06]">
+            {navTabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-ui text-xs transition cursor-pointer text-left ${
+                    isActive ? 'text-zinc-950 font-bold' : 'text-zinc-400 font-medium hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeTabPill"
+                      className="absolute inset-0 bg-white rounded-xl shadow-[0_2px_8px_rgba(255,255,255,0.2)]"
+                      transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                    />
+                  )}
+                  <span className="relative z-10 text-sm">{tab.icon}</span>
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
           </nav>
-
-          {/* Hotkey Hint Box */}
           <div className="skeuo-bevel-card rounded-2xl p-4 flex flex-col gap-2 mt-auto">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Active Trigger</span>
-            <div className="flex items-center gap-1.5 font-mono text-xs text-white">
-              <span className="skeuo-inner-socket px-2.5 py-1 rounded-md text-[11px] font-bold">{selectedShortcut}</span>
+            <div className="flex items-center justify-between">
+              <span className="font-ui text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Active Trigger</span>
+              <span className="font-code text-[10px] text-zinc-400">{dictationMode === 'interactive' ? 'Interactive' : 'Push-to-Talk'}</span>
             </div>
-            <p className="text-[10px] text-zinc-500 leading-tight">Press anywhere in Windows to initiate voice dictation.</p>
+            <div className="flex items-center gap-1.5 font-code text-xs text-white">
+              <span className="skeuo-inner-socket px-3 py-1 rounded-lg text-xs font-bold text-zinc-100 border border-white/10">{selectedShortcut}</span>
+            </div>
+            <p className="font-ui text-[11px] text-zinc-400 leading-tight">Press anywhere in Windows to initiate voice dictation.</p>
           </div>
         </aside>
 
-        {/* Content Panel */}
         <main className="flex-1 overflow-y-auto skeuo-bevel-card rounded-2xl p-6 flex flex-col gap-6">
           <AnimatePresence mode="wait">
-            {/* Tab 1: API & Model Settings */}
             {activeTab === 'api' && (
-              <motion.div
-                key="api"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-6"
-              >
+              <motion.div key="api" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Groq API & Whisper Model Settings
-                  </h2>
+                  <h2 className="font-display text-2xl font-normal text-white">Groq Cloud API & Whisper Model</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-0.5">Connect your Groq credentials for sub-300ms speech-to-text inference.</p>
                 </div>
-
                 <form onSubmit={handleSaveApiKey} className="flex flex-col gap-4">
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold text-zinc-300">Groq API Key</label>
-                    <div className="flex gap-3">
-                      <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="gsk_..."
-                        className="skeuo-sub-well flex-1 rounded-xl px-4 py-2.5 text-xs text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition"
-                      />
-                      <button
-                        type="submit"
-                        className="skeuo-inject-btn px-5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer"
-                      >
-                        Save Credentials
-                      </button>
+                    <div className="flex items-center justify-between">
+                      <label className="font-ui text-xs font-semibold text-zinc-300">Groq API Key</label>
+                      <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="font-ui text-xs text-zinc-400 hover:text-white underline">Create API Key on Groq ↗</a>
                     </div>
-                    {saveStatus && (
-                      <span className="text-xs font-medium text-emerald-400 mt-1">{saveStatus}</span>
-                    )}
+                    <div className="flex gap-3">
+                      <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="gsk_..." className="skeuo-sub-well flex-1 rounded-xl px-4 py-2.5 text-xs text-white font-code placeholder-zinc-600 focus:outline-none transition" />
+                      <button type="submit" className="skeuo-raised-btn px-5 py-2.5 rounded-xl text-xs font-ui font-bold transition cursor-pointer text-zinc-950">Save Key</button>
+                    </div>
+                    {saveStatus && <span className="font-ui text-xs font-medium text-emerald-400 mt-1">{saveStatus}</span>}
                   </div>
-
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold text-zinc-300">Whisper AI Model</label>
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="skeuo-sub-well w-full rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-zinc-500 transition cursor-pointer"
-                    >
-                      <option value="whisper-large-v3-turbo">whisper-large-v3-turbo (Ultra Fast - Default)</option>
-                      <option value="whisper-large-v3">whisper-large-v3 (Maximum Accuracy)</option>
+                    <label className="font-ui text-xs font-semibold text-zinc-300">Whisper AI Model</label>
+                    <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="skeuo-sub-well w-full rounded-xl px-4 py-2.5 text-xs text-white font-code focus:outline-none transition cursor-pointer">
+                      <option value="whisper-large-v3-turbo">whisper-large-v3-turbo (Ultra Fast • ~200ms latency)</option>
+                      <option value="whisper-large-v3">whisper-large-v3 (Maximum Accuracy • Multilingual)</option>
                     </select>
                   </div>
-
-                  <div className="flex flex-col gap-3 mt-2">
-                    <div className="flex justify-between items-center">
-                      <label className="text-xs font-semibold text-zinc-300">System Prompt Presets</label>
-                      <span className="text-[11px] text-zinc-400 font-mono">Hover to preview • 1-Click Apply</span>
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                      {PROMPT_PRESETS.map((preset) => {
-                        const isSelected = systemPrompt.trim() === preset.prompt.trim();
-                        const isHovered = hoveredPresetId === preset.id;
-                        return (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onMouseEnter={() => setHoveredPresetId(preset.id)}
-                            onMouseLeave={() => setHoveredPresetId(null)}
-                            onClick={() => handleApplySystemPromptPreset(preset.prompt)}
-                            className={`p-3.5 rounded-xl flex flex-col gap-1 transition cursor-pointer text-left border ${
-                              isSelected
-                                ? 'bg-white text-black border-white/50 shadow-md font-bold'
-                                : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold">{preset.name}</span>
-                              {isSelected && (
-                                <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-mono font-semibold">
-                                  ACTIVE
-                                </span>
-                              )}
-                            </div>
-                            <AnimatePresence>
-                              {isHovered && (
-                                <motion.p
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: 'auto' }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  className={`text-[11px] leading-relaxed mt-1 overflow-hidden ${isSelected ? 'text-zinc-700' : 'text-zinc-400'}`}
-                                >
-                                  {preset.desc}
-                                </motion.p>
-                              )}
-                            </AnimatePresence>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 mt-2">
-                    <div className="flex justify-between items-center">
-                      <label className="text-xs font-semibold text-zinc-300">Active System Prompt Instructions</label>
-                      <button
-                        type="button"
-                        onClick={() => handleApplySystemPromptPreset(systemPrompt)}
-                        className="text-xs text-white font-semibold underline hover:text-zinc-300 transition cursor-pointer"
-                      >
-                        Save Custom Prompt
-                      </button>
-                    </div>
-                    <textarea
-                      rows={7}
-                      value={systemPrompt}
-                      onChange={(e) => setSystemPrompt(e.target.value)}
-                      className="skeuo-sub-well w-full rounded-xl p-3.5 text-xs text-zinc-200 font-mono leading-relaxed focus:outline-none focus:border-zinc-500 transition resize-none"
-                    />
+                  <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-2 mt-2 border border-white/[0.04]">
+                    <span className="font-ui text-xs font-semibold text-white flex items-center gap-1.5">⚡ Hardware Acceleration Overview</span>
+                    <p className="font-ui text-[11px] text-zinc-400 leading-relaxed">Rusper uses Groq's Language Processing Units (LPUs) to execute Whisper Large v3 directly in the cloud at <strong>~216x real-time speed</strong>, eliminating CPU spikes and fan noise on your local machine.</p>
                   </div>
                 </form>
               </motion.div>
             )}
 
-            {/* Tab 2: Audio Input Settings */}
             {activeTab === 'audio' && (
-              <motion.div
-                key="audio"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-6"
-              >
+              <motion.div key="audio" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Audio Input Devices
-                  </h2>
+                  <h2 className="font-display text-2xl font-normal text-white">Audio Input & Live Microphone Test</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-0.5">Select input device and test real-time sampling levels at 16kHz mono.</p>
                 </div>
-
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-xs font-semibold text-zinc-300">Active Microphone Device</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          invoke<string[]>('get_audio_devices').then(devs => {
-                            if (devs) setAudioDevices(devs);
-                          });
-                        }}
-                        className="text-[11px] text-zinc-400 hover:text-white underline font-mono cursor-pointer"
-                      >
-                        Refresh Devices
-                      </button>
+                      <label className="font-ui text-xs font-semibold text-zinc-300">Active Microphone</label>
+                      <button type="button" onClick={() => { invoke<string[]>('get_audio_devices').then((devs) => { if (devs) setAudioDevices(devs); }); }} className="font-code text-[11px] text-zinc-400 hover:text-white underline cursor-pointer">↻ Refresh Devices</button>
                     </div>
-                    <select
-                      value={selectedDevice}
-                      onChange={(e) => handleDeviceChange(e.target.value)}
-                      className="skeuo-sub-well w-full rounded-xl px-4 py-2.5 text-xs text-white font-mono cursor-pointer focus:outline-none focus:border-zinc-500 transition"
-                    >
+                    <select value={selectedDevice} onChange={(e) => handleDeviceChange(e.target.value)} className="skeuo-sub-well w-full rounded-xl px-4 py-2.5 text-xs text-white font-code cursor-pointer focus:outline-none transition">
                       <option value="default">Default Windows Microphone (System Default)</option>
-                      {audioDevices.map((dev, idx) => (
-                        <option key={idx} value={dev}>
-                          {dev}
-                        </option>
-                      ))}
+                      {audioDevices.map((dev, idx) => <option key={idx} value={dev}>{dev}</option>)}
                     </select>
                   </div>
-
-                  <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-3 border border-white/[0.04]">
+                  <div className="skeuo-inner-socket rounded-2xl p-5 flex flex-col gap-4 border border-white/[0.04]">
                     <div className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-zinc-300">Live Microphone Level & Audio Tester</span>
-                        {isTestingMic && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        )}
+                        <span className="font-ui font-semibold text-zinc-200">Live Audio Level Meter</span>
+                        {isTestingMic && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
                       </div>
-                      <button
-                        type="button"
-                        onClick={toggleMicTest}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
-                          isTestingMic
-                            ? 'bg-rose-950 text-rose-200 border-rose-700 hover:bg-rose-900'
-                            : 'skeuo-raised-btn text-zinc-200 hover:text-white border-zinc-700'
-                        }`}
-                      >
-                        {isTestingMic ? 'Stop Testing' : 'Test Microphone Live'}
+                      <button type="button" onClick={toggleMicTest} className={`px-3.5 py-1.5 rounded-lg font-ui text-xs font-bold transition cursor-pointer border ${isTestingMic ? 'bg-rose-950 text-rose-200 border-rose-700 hover:bg-rose-900' : 'skeuo-raised-btn text-zinc-950'}`}>
+                        {isTestingMic ? '⏹ Stop Testing' : '▶ Test Microphone Live'}
                       </button>
                     </div>
-
-                    {/* Live Volume Percentage Progress Bar */}
                     <div className="flex items-center gap-3">
                       <div className="w-full h-3.5 skeuo-sub-well rounded-full overflow-hidden p-0.5 relative">
-                        <div
-                          className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 rounded-full transition-all duration-75"
-                          style={{ width: `${Math.min(100, Math.max(3, Math.round(micVolume * 100)))}%` }}
-                        />
+                        <div className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 rounded-full transition-all duration-75 shadow-[0_0_8px_rgba(52,211,153,0.5)]" style={{ width: `${Math.min(100, Math.max(3, Math.round(micVolume * 100)))}%` }} />
                       </div>
-                      <span className="text-xs font-mono font-bold text-white shrink-0 w-12 text-right">
-                        {Math.min(100, Math.round(micVolume * 100))}%
-                      </span>
+                      <span className="font-code text-xs font-bold text-white shrink-0 w-12 text-right">{Math.min(100, Math.round(micVolume * 100))}%</span>
                     </div>
-
-                    {/* Animated 16-Bar Equalizer Visualizer */}
-                    <div className="flex items-end justify-between h-10 pt-2 px-1">
+                    <div className="flex items-end justify-between h-12 pt-2 px-2 bg-black/30 rounded-xl">
                       {Array.from({ length: 16 }).map((_, i) => {
                         const baseVol = Math.round(micVolume * 100);
-                        const wave = Math.sin((i * 0.7) + (baseVol * 0.1));
-                        const heightPct = isTestingMic
-                          ? Math.min(100, Math.max(12, Math.round(baseVol * (0.6 + wave * 0.4))))
-                          : 12;
-                        return (
-                          <div
-                            key={i}
-                            className="w-1.5 bg-gradient-to-t from-emerald-500 to-cyan-400 rounded-full transition-all duration-75"
-                            style={{ height: `${heightPct}%` }}
-                          />
-                        );
+                        const wave = Math.sin(i * 0.7 + baseVol * 0.1);
+                        const heightPct = isTestingMic ? Math.min(100, Math.max(14, Math.round(baseVol * (0.6 + wave * 0.4)))) : 14;
+                        return <div key={i} className="w-2 bg-gradient-to-t from-emerald-500 via-teal-400 to-white rounded-full transition-all duration-75 shadow-[0_0_4px_rgba(45,212,191,0.6)]" style={{ height: `${heightPct}%` }} />;
                       })}
                     </div>
                   </div>
@@ -580,99 +346,38 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {/* Tab 3: Operating Mode Preferences */}
             {activeTab === 'mode' && (
-              <motion.div
-                key="mode"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-6"
-              >
+              <motion.div key="mode" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Operating Mode Selection
-                  </h2>
+                  <h2 className="font-display text-2xl font-normal text-white">Dictation Operating Modes</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-0.5">Choose how Rusper interacts with your speech and Windows applications.</p>
                 </div>
-
-                {hotkeySaveStatus && (
-                  <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium">
-                    {hotkeySaveStatus}
-                  </div>
-                )}
-
+                {hotkeySaveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{hotkeySaveStatus}</div>}
                 <div className="flex flex-col gap-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => handleSetDictationMode('interactive')}
-                      className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
-                        dictationMode === 'interactive'
-                          ? 'bg-white text-black border-white/50 shadow-md font-bold'
-                          : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
-                      }`}
-                    >
-                      {dictationMode === 'interactive' && (
-                        <svg className="w-5 h-5 text-black absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-sm font-bold">Interactive Review Mode</span>
-                      </div>
-                      <p className={`text-xs leading-relaxed ${dictationMode === 'interactive' ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                        Click hotkey once to record. Displays a floating pop-up before injecting text.
-                      </p>
+                    <button onClick={() => handleSetDictationMode('interactive')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'interactive' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                      {dictationMode === 'interactive' && (<svg className="w-5 h-5 text-zinc-950 absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" /></svg>)}
+                      <span className="font-ui text-sm font-bold">Interactive Review Mode</span>
+                      <p className={`font-ui text-xs leading-relaxed ${dictationMode === 'interactive' ? 'text-zinc-700' : 'text-zinc-400'}`}>Click hotkey once to record. Displays a floating card to review, redo, or edit before pasting.</p>
                     </button>
-
-                    <button
-                      onClick={() => handleSetDictationMode('push_to_talk')}
-                      className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${
-                        dictationMode === 'push_to_talk'
-                          ? 'bg-white text-black border-white/50 shadow-md font-bold'
-                          : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'
-                      }`}
-                    >
-                      {dictationMode === 'push_to_talk' && (
-                        <svg className="w-5 h-5 text-black absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-sm font-bold">Push-to-Talk Mode</span>
-                      </div>
-                      <p className={`text-xs leading-relaxed ${dictationMode === 'push_to_talk' ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                        Hold hotkey while speaking. Releasing key transcribes & pastes text directly into active app.
-                      </p>
+                    <button onClick={() => handleSetDictationMode('push_to_talk')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'push_to_talk' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                      {dictationMode === 'push_to_talk' && (<svg className="w-5 h-5 text-zinc-950 absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" /></svg>)}
+                      <span className="font-ui text-sm font-bold">Push-to-Talk Capsule</span>
+                      <p className={`font-ui text-xs leading-relaxed ${dictationMode === 'push_to_talk' ? 'text-zinc-700' : 'text-zinc-400'}`}>Hold hotkey while speaking. Releasing key transcribes & auto-pastes directly into active app.</p>
                     </button>
                   </div>
-
-                  {/* Collapsible Accordion: Smart Dictation Safeguards */}
                   <div className="skeuo-inner-socket rounded-2xl border border-white/[0.04] overflow-hidden text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setIsSafeguardsOpen(!isSafeguardsOpen)}
-                      className="w-full px-4 py-3.5 flex items-center justify-between font-semibold text-white cursor-pointer hover:bg-white/5 transition"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span>🛡️</span> Built-in Smart Dictation Safeguards & Limits
-                      </span>
-                      <span className="text-xs font-mono text-zinc-400">
-                        {isSafeguardsOpen ? '▲ Hide' : '▼ View Details'}
-                      </span>
+                    <button type="button" onClick={() => setIsSafeguardsOpen(!isSafeguardsOpen)} className="w-full px-4 py-3 flex items-center justify-between font-ui font-semibold text-white cursor-pointer hover:bg-white/5 transition">
+                      <span className="flex items-center gap-2"><span>🛡️</span> Built-in Smart Dictation Safeguards & Limits</span>
+                      <span className="font-code text-xs text-zinc-400">{isSafeguardsOpen ? '▲ Hide' : '▼ View Details'}</span>
                     </button>
                     <AnimatePresence>
                       {isSafeguardsOpen && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="px-4 pb-4 border-t border-white/[0.04]"
-                        >
-                          <ul className="text-[11px] text-zinc-400 leading-relaxed flex flex-col gap-2 list-disc pl-4 mt-3 font-mono">
-                            <li><strong>90-Second Max Recording Limit</strong>: Hard stop and auto-processing after 1 min 30 sec.</li>
-                            <li><strong>15-Second Silence Auto-Pause</strong>: Auto-pauses recording if no audio volume is detected for 15s.</li>
-                            <li><strong>Active Text Field Validation</strong>: Checks Win32 active app window before pasting.</li>
-                            <li><strong>Instant Undo Support</strong>: Revert last dictation chunk via <strong>↩ Undo</strong> button or <code>Ctrl + Z</code>.</li>
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-4 pb-4 border-t border-white/[0.04]">
+                          <ul className="font-ui text-[11px] text-zinc-400 leading-relaxed flex flex-col gap-2 list-disc pl-4 mt-3">
+                            <li><strong>90-Second Max Recording Limit</strong>: Automatic stop and transcribe to prevent runaway audio buffers.</li>
+                            <li><strong>15-Second Silence Auto-Pause</strong>: Auto-pauses recording if no audio volume is detected for 15 seconds.</li>
+                            <li><strong>Active Text Field Validation</strong>: Verifies active focused window before injecting clipboard text.</li>
                           </ul>
                         </motion.div>
                       )}
@@ -682,79 +387,39 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {/* Tab 4: Hotkeys & Overlay Preferences */}
             {activeTab === 'hotkeys' && (
-              <motion.div
-                key="hotkeys"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-6"
-              >
+              <motion.div key="hotkeys" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Hotkeys & Overlay
-                  </h2>
+                  <h2 className="font-display text-2xl font-normal text-white">Global Hotkeys & Screen Placement</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-0.5">Configure OS-wide global key triggers and floating overlay position.</p>
                 </div>
-
-                {hotkeySaveStatus && (
-                  <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium">
-                    {hotkeySaveStatus}
-                  </div>
-                )}
-
-                {/* Section 1: Current Shortcut Display */}
-                <div className="skeuo-inner-socket rounded-2xl p-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xs font-semibold text-white">Current Global Trigger Shortcut</h3>
-                  </div>
-                  <span className="skeuo-raised-btn px-4 py-2 rounded-xl text-xs font-mono font-bold">
-                    {selectedShortcut}
-                  </span>
+                {hotkeySaveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{hotkeySaveStatus}</div>}
+                <div className="skeuo-inner-socket rounded-2xl p-4 flex items-center justify-between border border-white/[0.04]">
+                  <h3 className="font-ui text-xs font-semibold text-white">Current Global Trigger</h3>
+                  <span className="skeuo-raised-btn px-4 py-2 rounded-xl text-xs font-code font-bold text-zinc-950">{selectedShortcut}</span>
                 </div>
-
-                {/* Section 2: Premade Shortcut Presets */}
                 <div className="flex flex-col gap-3">
-                  <label className="text-xs font-semibold text-zinc-300">Premade Shortcut Presets</label>
+                  <label className="font-ui text-xs font-semibold text-zinc-300">Quick Shortcut Presets</label>
                   <div className="grid grid-cols-3 gap-2.5">
                     {PRESET_SHORTCUTS.map((preset) => (
-                      <button
-                        key={preset}
-                        onClick={() => handleApplyPresetShortcut(preset)}
-                        className={`px-3 py-2.5 rounded-xl text-xs font-mono transition cursor-pointer border ${
-                          selectedShortcut === preset
-                            ? 'bg-white text-black font-bold border-white/40 shadow-md'
-                            : 'skeuo-sub-well text-zinc-300 hover:text-white hover:border-zinc-600'
-                        }`}
-                      >
+                      <button key={preset} onClick={() => handleApplyPresetShortcut(preset)} className={`px-3 py-2.5 rounded-xl text-xs font-code transition cursor-pointer border ${selectedShortcut === preset ? 'bg-white text-zinc-950 font-bold border-white/40 shadow-md' : 'skeuo-sub-well text-zinc-300 hover:text-white hover:border-zinc-600'}`}>
                         {preset}
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {/* Section 3: Custom Hotkey Builder */}
-                <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-3">
-                  <label className="text-xs font-semibold text-zinc-300">Build Custom Hotkey Combination</label>
+                <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-3 border border-white/[0.04]">
+                  <label className="font-ui text-xs font-semibold text-zinc-300">Build Custom Shortcut</label>
                   <div className="flex items-center gap-3">
-                    <select
-                      value={customModifier}
-                      onChange={(e) => setCustomModifier(e.target.value)}
-                      className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-mono cursor-pointer"
-                    >
+                    <select value={customModifier} onChange={(e) => setCustomModifier(e.target.value)} className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-code cursor-pointer">
                       <option value="None">None (Single Key)</option>
                       <option value="Ctrl + Alt">Ctrl + Alt</option>
                       <option value="Ctrl + Shift">Ctrl + Shift</option>
                       <option value="Alt">Alt</option>
                       <option value="Ctrl">Ctrl</option>
                     </select>
-
-                    <span className="text-xs text-zinc-400 font-bold">+</span>
-                    <select
-                      value={customKey}
-                      onChange={(e) => setCustomKey(e.target.value)}
-                      className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-mono cursor-pointer"
-                    >
+                    <span className="font-ui text-xs text-zinc-400 font-bold">+</span>
+                    <select value={customKey} onChange={(e) => setCustomKey(e.target.value)} className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-code cursor-pointer">
                       <option value="ScrollLock">ScrollLock</option>
                       <option value="Pause">Pause</option>
                       <option value="Insert">Insert</option>
@@ -771,29 +436,11 @@ export default function Dashboard() {
                       <option value="F11">F11</option>
                       <option value="F12">F12</option>
                     </select>
-
-                    <button
-                      onClick={handleSaveCustomShortcut}
-                      className="skeuo-inject-btn px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ml-auto"
-                    >
-                      Set Custom Hotkey
-                    </button>
+                    <button onClick={handleSaveCustomShortcut} className="skeuo-raised-btn font-ui text-zinc-950 px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ml-auto">Set Hotkey</button>
                   </div>
                 </div>
-
-                {/* Fn Key Technical Callout Note */}
-                <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-1.5 text-xs text-zinc-300">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    ℹ Note on Laptop Fn Key
-                  </span>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    The <strong>Fn key</strong> on laptops is a hardware-level firmware modifier that does not emit standard OS key events to Windows. For 1-click or easy access, select options like <strong>Alt + Space</strong>, <strong>Ctrl + Shift + Space</strong>, <strong>Ctrl + Alt + D</strong>, or <strong>F1-F12</strong>.
-                  </p>
-                </div>
-
-                {/* Section 4: Overlay Position Customization */}
                 <div className="flex flex-col gap-3">
-                  <label className="text-xs font-semibold text-zinc-300">Pop-up Overlay Screen Position</label>
+                  <label className="font-ui text-xs font-semibold text-zinc-300">Overlay Screen Position</label>
                   <div className="grid grid-cols-4 gap-2.5">
                     {[
                       { id: 'bottom-center', label: 'Bottom Center' },
@@ -801,15 +448,7 @@ export default function Dashboard() {
                       { id: 'top-right', label: 'Top Right' },
                       { id: 'center', label: 'Screen Center' },
                     ].map((pos) => (
-                      <button
-                        key={pos.id}
-                        onClick={() => handleSetOverlayPosition(pos.id)}
-                        className={`px-3 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer border ${
-                          overlayPosition === pos.id
-                            ? 'bg-white text-black font-bold border-white/40 shadow-md'
-                            : 'skeuo-sub-well text-zinc-300 hover:text-white hover:border-zinc-600'
-                        }`}
-                      >
+                      <button key={pos.id} onClick={() => handleSetOverlayPosition(pos.id)} className={`px-3 py-2 rounded-xl font-ui text-xs font-medium transition cursor-pointer border ${overlayPosition === pos.id ? 'bg-white text-zinc-950 font-bold border-white/40 shadow-md' : 'skeuo-sub-well text-zinc-300 hover:text-white hover:border-zinc-600'}`}>
                         {pos.label}
                       </button>
                     ))}
@@ -818,59 +457,67 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {/* Tab 5: Built in One Night Article */}
-            {activeTab === 'article' && (
-              <motion.div
-                key="article"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="article-section flex flex-col gap-6 max-w-3xl"
-              >
+            {activeTab === 'prompts' && (
+              <motion.div key="prompts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-article-body mb-1">
+                  <h2 className="font-display text-2xl font-normal text-white">AI Prompt Tuning & Presets</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-0.5">Choose from specialized editing personas or write your custom LLM instructions.</p>
+                </div>
+                {saveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{saveStatus}</div>}
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <label className="font-ui text-xs font-semibold text-zinc-300">Preset Personas</label>
+                    <span className="font-code text-[11px] text-zinc-400">Hover for details • Click to apply</span>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {PROMPT_PRESETS.map((preset) => {
+                      const isSelected = systemPrompt.trim() === preset.prompt.trim();
+                      const isHovered = hoveredPresetId === preset.id;
+                      return (
+                        <button key={preset.id} type="button" onMouseEnter={() => setHoveredPresetId(preset.id)} onMouseLeave={() => setHoveredPresetId(null)} onClick={() => handleApplySystemPromptPreset(preset.prompt)} className={`p-3.5 rounded-xl flex flex-col gap-1 transition cursor-pointer text-left border ${isSelected ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-ui text-xs font-bold">{preset.name}</span>
+                            {isSelected && <span className="text-[10px] bg-zinc-950 text-white px-2 py-0.5 rounded font-code font-semibold">ACTIVE</span>}
+                          </div>
+                          <AnimatePresence>
+                            {(isHovered || isSelected) && (
+                              <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className={`font-ui text-[11px] leading-relaxed mt-1 overflow-hidden ${isSelected ? 'text-zinc-700' : 'text-zinc-400'}`}>{preset.desc}</motion.p>
+                            )}
+                          </AnimatePresence>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 mt-2">
+                  <div className="flex justify-between items-center">
+                    <label className="font-ui text-xs font-semibold text-zinc-300">Custom Prompt Instructions</label>
+                    <button type="button" onClick={() => handleApplySystemPromptPreset(systemPrompt)} className="font-ui text-xs text-white font-semibold underline hover:text-zinc-300 transition cursor-pointer">Save Custom Prompt</button>
+                  </div>
+                  <textarea rows={8} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} className="skeuo-sub-well w-full rounded-xl p-3.5 text-xs text-zinc-200 font-code leading-relaxed focus:outline-none transition resize-none" />
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'article' && (
+              <motion.div key="article" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6 max-w-3xl">
+                <div>
+                  <div className="flex items-center gap-2 font-code text-xs text-zinc-400 mb-1">
                     <span>ESSAY</span> • <span>AUGUST 2026</span> • <span>5 MIN READ</span>
                   </div>
-                  <h2 className="font-article-heading text-2xl font-extrabold text-white tracking-tight leading-snug">
-                    Crafting Rusper: How an AI Voice Dictation Engine Was Built Overnight
-                  </h2>
-                  <p className="font-article-heading text-xs text-zinc-300 mt-1">
-                    An architectural retrospective on pairing Rust audio threads with Groq Whisper and modern React skeuomorphs.
-                  </p>
+                  <h2 className="font-display text-3xl font-normal text-white tracking-normal leading-snug">Crafting Rusper: How an AI Voice Dictation Engine Was Built Overnight</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-1">An architectural retrospective on pairing Rust audio threads with Groq Whisper and modern React skeuomorphs.</p>
                 </div>
-
-                <article className="font-article-body text-zinc-300 leading-relaxed flex flex-col gap-4 text-xs">
-                  <p>
-                    The story of <strong>Rusper</strong> began with a simple frustration: voice dictation tools on desktop were either bloated, slow, or locked behind expensive monthly subscriptions. We wanted something instant—a sleek utility that stays ready in the Windows system tray and converts speech into active text within milliseconds of pressing a hotkey.
-                  </p>
-
-                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
-                    1. The Multi-Threaded Audio Pipeline in Rust
-                  </h3>
-                  <p>
-                    Using Tauri v2 and Rust, we leveraged <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">cpal</code> to hook directly into the Windows WASAPI audio subsystem at 16kHz mono sampling. Audio samples are streamed asynchronously into an in-memory buffer and flushed to disk using <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">hound::WavWriter</code>.
-                  </p>
-
-                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
-                    2. Sub-Second Transcriptions with Groq Whisper
-                  </h3>
-                  <p>
-                    The moment you hit <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">Enter</kbd>, the recorded audio payload is posted via multipart binary stream directly to Groq Cloud's ultra-fast Whisper engine (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">whisper-large-v3-turbo</code>). Transcriptions return in under 300 milliseconds.
-                  </p>
-
-                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
-                    3. Clipboard Injection & Enigo Key Simulation
-                  </h3>
-                  <p>
-                    Once transcribed, Rusper writes the text payload directly to the OS clipboard via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">arboard</code> and simulates a physical <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">Ctrl + V</kbd> keystroke via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">enigo</code>, pasting your speech directly into Notepad, Word, or your web browser.
-                  </p>
-
-                  <h3 className="font-article-heading text-base font-bold text-white mt-2">
-                    4. Skeuomorphic 3D Beveled Design
-                  </h3>
-                  <p>
-                    Finally, the interface was crafted using a tactile 3D beveled dark charcoal chassis (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">#171717</code>) with recessed obsidian sockets (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[11px]">#070707</code>), top specular light catches, and glowing white waveform animations.
-                  </p>
+                <article className="font-ui text-zinc-300 leading-relaxed flex flex-col gap-4 text-xs">
+                  <p>The story of <strong>Rusper</strong> began with a simple frustration: voice dictation tools on desktop were either bloated, slow, or locked behind expensive monthly subscriptions. We wanted something instant—a sleek utility that stays ready in the Windows system tray and converts speech into active text within milliseconds of pressing a hotkey.</p>
+                  <h3 className="font-display text-lg font-normal text-white mt-3">1. The Multi-Threaded Audio Pipeline in Rust</h3>
+                  <p>Using Tauri v2 and Rust, we leveraged <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">cpal</code> to hook directly into the Windows WASAPI audio subsystem at 16kHz mono sampling. Audio samples are streamed asynchronously into an in-memory buffer and flushed to disk using <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">hound::WavWriter</code>.</p>
+                  <h3 className="font-display text-lg font-normal text-white mt-3">2. Sub-Second Transcriptions with Groq Whisper</h3>
+                  <p>The moment you hit <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">Enter</kbd>, the recorded audio payload is posted via multipart binary stream directly to Groq Cloud's ultra-fast Whisper engine (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">whisper-large-v3-turbo</code>). Transcriptions return in under 300 milliseconds.</p>
+                  <h3 className="font-display text-lg font-normal text-white mt-3">3. Clipboard Injection & Enigo Key Simulation</h3>
+                  <p>Once transcribed, Rusper writes the text payload directly to the OS clipboard via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">arboard</code> and simulates a physical <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">Ctrl + V</kbd> keystroke via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">enigo</code>, pasting your speech directly into Notepad, Word, or your web browser.</p>
+                  <h3 className="font-display text-lg font-normal text-white mt-3">4. Skeuomorphic 3D Beveled Design</h3>
+                  <p>Finally, the interface was crafted using a tactile 3D beveled dark charcoal chassis with recessed obsidian sockets, top specular light catches, and glowing white waveform animations.</p>
                 </article>
               </motion.div>
             )}

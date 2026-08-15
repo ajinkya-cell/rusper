@@ -141,37 +141,61 @@ pub async fn register_hotkey(app: AppHandle, hotkey: String) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
-pub async fn set_overlay_position(app: AppHandle, position: String) -> Result<(), String> {
-    let window = app.get_webview_window("main").ok_or_else(|| "Main window not found".to_string())?;
-    let monitor = window.primary_monitor().map_err(|e| e.to_string())?.ok_or_else(|| "Primary monitor not found".to_string())?;
+pub fn get_saved_overlay_position_str() -> String {
+    let file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
+    if let Ok(content) = std::fs::read_to_string(&file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    "bottom-center".to_string()
+}
 
-    let monitor_size = monitor.size();
-    let scale_factor = monitor.scale_factor();
-    let window_width = (360.0 * scale_factor) as u32;
-    let window_height = (200.0 * scale_factor) as u32;
+pub fn save_overlay_position_str(pos: &str) {
+    let file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
+    let _ = std::fs::write(&file, pos);
+}
 
-    let (x, y) = match position.as_str() {
+pub fn compute_window_position(
+    monitor_width: u32,
+    monitor_height: u32,
+    window_width: u32,
+    window_height: u32,
+    scale_factor: f64,
+    position: &str,
+) -> (i32, i32) {
+    match position {
         "bottom-right" => (
-            monitor_size.width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
-            monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
+            monitor_width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
+            monitor_height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
         ),
         "top-right" => (
-            monitor_size.width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
+            monitor_width as i32 - window_width as i32 - (40.0 * scale_factor) as i32,
             (40.0 * scale_factor) as i32,
         ),
         "center" => (
-            (monitor_size.width as i32 - window_width as i32) / 2,
-            (monitor_size.height as i32 - window_height as i32) / 2,
+            (monitor_width as i32 - window_width as i32) / 2,
+            (monitor_height as i32 - window_height as i32) / 2,
         ),
         _ => ( // "bottom-center"
-            (monitor_size.width as i32 - window_width as i32) / 2,
-            monitor_size.height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
+            (monitor_width as i32 - window_width as i32) / 2,
+            monitor_height as i32 - window_height as i32 - (85.0 * scale_factor) as i32,
         ),
-    };
+    }
+}
 
-    window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+#[tauri::command]
+pub async fn set_overlay_position(app: AppHandle, position: String) -> Result<(), String> {
+    save_overlay_position_str(&position);
+    let mode = get_saved_mode_str();
+    sync_window_size(app, mode).await?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_overlay_position() -> Result<String, String> {
+    Ok(get_saved_overlay_position_str())
 }
 
 pub fn get_saved_device_str() -> Option<String> {
@@ -270,23 +294,66 @@ pub fn save_system_prompt_str(prompt: &str) {
     let _ = std::fs::write(&file, prompt);
 }
 
-#[tauri::command]
-pub async fn sync_window_size(window: tauri::WebviewWindow, mode: String) -> Result<(), String> {
-    if let Ok(Some(monitor)) = window.primary_monitor() {
-        let monitor_size = monitor.size();
-        let scale_factor = monitor.scale_factor();
-        let (w_logical, h_logical) = if mode == "push_to_talk" {
-            (260.0, 52.0)
-        } else {
-            (360.0, 200.0)
-        };
-        let window_width = (w_logical * scale_factor) as u32;
-        let window_height = (h_logical * scale_factor) as u32;
-        let x = (monitor_size.width as i32 - window_width as i32) / 2;
-        let y = monitor_size.height as i32 - window_height as i32 - (100.0 * scale_factor) as i32;
+pub fn apply_pure_window_attributes(window: &tauri::WebviewWindow) {
+    let _ = window.set_shadow(false);
 
-        let _ = window.set_size(tauri::PhysicalSize::new(window_width, window_height));
-        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+            DWMWCP_DONOTROUND,
+        };
+        use windows_sys::Win32::Foundation::HWND;
+
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd_val = hwnd.0 as HWND;
+            let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+            unsafe {
+                DwmSetWindowAttribute(
+                    hwnd_val,
+                    DWMWA_BORDER_COLOR as u32,
+                    &color_none as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+                let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
+                DwmSetWindowAttribute(
+                    hwnd_val,
+                    DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                    &corner_pref as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn sync_window_size(app: AppHandle, mode: String) -> Result<(), String> {
+    if let Some(main_window) = app.get_webview_window("main") {
+        apply_pure_window_attributes(&main_window);
+        if let Ok(Some(monitor)) = main_window.primary_monitor() {
+            let monitor_size = monitor.size();
+            let scale_factor = monitor.scale_factor();
+            let (w_logical, h_logical) = if mode == "push_to_talk" {
+                (260.0, 52.0)
+            } else {
+                (360.0, 200.0)
+            };
+            let window_width = (w_logical * scale_factor) as u32;
+            let window_height = (h_logical * scale_factor) as u32;
+            let pos_str = get_saved_overlay_position_str();
+            let (x, y) = compute_window_position(
+                monitor_size.width,
+                monitor_size.height,
+                window_width,
+                window_height,
+                scale_factor,
+                &pos_str,
+            );
+
+            let _ = main_window.set_size(tauri::PhysicalSize::new(window_width, window_height));
+            let _ = main_window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
     }
     Ok(())
 }
