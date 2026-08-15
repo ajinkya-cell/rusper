@@ -38,7 +38,18 @@ unsafe impl Sync for MicTestStream {}
 
 static ACTIVE_MIC_TEST: Mutex<Option<MicTestStream>> = Mutex::new(None);
 
+fn calculate_db_normalized_volume(raw_rms: f32) -> f32 {
+    if raw_rms <= 0.00001 {
+        return 0.0;
+    }
+    let db = 20.0 * raw_rms.log10();
+    let norm = (db + 50.0) / 48.0;
+    norm.clamp(0.0, 1.0)
+}
+
 pub fn start_mic_test_stream(app_handle: AppHandle, device_name: Option<String>) -> Result<(), String> {
+    stop_mic_test_stream();
+
     let host = cpal::default_host();
     let device = if let Some(ref target) = device_name {
         if target != "default" && !target.trim().is_empty() {
@@ -60,64 +71,123 @@ pub fn start_mic_test_stream(app_handle: AppHandle, device_name: Option<String>)
     let sample_format = config.sample_format();
     let stream_config: cpal::StreamConfig = config.into();
 
-    let err_fn = |err| log::error!("Mic test stream error: {}", err);
+    let err_fn = |err| eprintln!("Mic test stream error: {:?}", err);
+    let last_emit = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let start_instant = std::time::Instant::now();
 
     let stream = match sample_format {
-        SampleFormat::F32 => device.build_input_stream(
-            &stream_config,
-            move |data: &[f32], _| {
-                if !data.is_empty() {
-                    let sum_sq: f32 = data.iter().map(|s| s * s).sum();
-                    let raw_rms = (sum_sq / data.len() as f32).sqrt();
-                    let scaled_rms = (raw_rms * 6.0).min(1.0);
-                    let _ = app_handle.emit("test-audio-volume", scaled_rms);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        SampleFormat::I16 => device.build_input_stream(
-            &stream_config,
-            move |data: &[i16], _| {
-                if !data.is_empty() {
-                    let sum_sq: f32 = data.iter().map(|&s| {
-                        let f = s as f32 / i16::MAX as f32;
-                        f * f
-                    }).sum();
-                    let raw_rms = (sum_sq / data.len() as f32).sqrt();
-                    let scaled_rms = (raw_rms * 6.0).min(1.0);
-                    let _ = app_handle.emit("test-audio-volume", scaled_rms);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        SampleFormat::U16 => device.build_input_stream(
-            &stream_config,
-            move |data: &[u16], _| {
-                if !data.is_empty() {
-                    let sum_sq: f32 = data.iter().map(|&s| {
-                        let f = (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0);
-                        f * f
-                    }).sum();
-                    let raw_rms = (sum_sq / data.len() as f32).sqrt();
-                    let scaled_rms = (raw_rms * 6.0).min(1.0);
-                    let _ = app_handle.emit("test-audio-volume", scaled_rms);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        _ => {
-            // Fallback generic float stream build attempt
+        SampleFormat::F32 => {
+            let le = Arc::clone(&last_emit);
+            let handle = app_handle.clone();
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _| {
+                    if start_instant.elapsed().as_secs() >= 60 {
+                        return;
+                    }
                     if !data.is_empty() {
                         let sum_sq: f32 = data.iter().map(|s| s * s).sum();
                         let raw_rms = (sum_sq / data.len() as f32).sqrt();
-                        let scaled_rms = (raw_rms * 6.0).min(1.0);
-                        let _ = app_handle.emit("test-audio-volume", scaled_rms);
+                        let scaled_rms = calculate_db_normalized_volume(raw_rms);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let prev = le.load(std::sync::atomic::Ordering::Relaxed);
+                        if now.saturating_sub(prev) >= 28 {
+                            le.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let _ = handle.emit("test-audio-volume", scaled_rms);
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )
+        },
+        SampleFormat::I16 => {
+            let le = Arc::clone(&last_emit);
+            let handle = app_handle.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _| {
+                    if start_instant.elapsed().as_secs() >= 60 {
+                        return;
+                    }
+                    if !data.is_empty() {
+                        let sum_sq: f32 = data.iter().map(|&s| {
+                            let f = s as f32 / i16::MAX as f32;
+                            f * f
+                        }).sum();
+                        let raw_rms = (sum_sq / data.len() as f32).sqrt();
+                        let scaled_rms = calculate_db_normalized_volume(raw_rms);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let prev = le.load(std::sync::atomic::Ordering::Relaxed);
+                        if now.saturating_sub(prev) >= 28 {
+                            le.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let _ = handle.emit("test-audio-volume", scaled_rms);
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )
+        },
+        SampleFormat::U16 => {
+            let le = Arc::clone(&last_emit);
+            let handle = app_handle.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _| {
+                    if start_instant.elapsed().as_secs() >= 60 {
+                        return;
+                    }
+                    if !data.is_empty() {
+                        let sum_sq: f32 = data.iter().map(|&s| {
+                            let f = (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0);
+                            f * f
+                        }).sum();
+                        let raw_rms = (sum_sq / data.len() as f32).sqrt();
+                        let scaled_rms = calculate_db_normalized_volume(raw_rms);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let prev = le.load(std::sync::atomic::Ordering::Relaxed);
+                        if now.saturating_sub(prev) >= 28 {
+                            le.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let _ = handle.emit("test-audio-volume", scaled_rms);
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )
+        },
+        _ => {
+            let le = Arc::clone(&last_emit);
+            let handle = app_handle.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _| {
+                    if start_instant.elapsed().as_secs() >= 60 {
+                        return;
+                    }
+                    if !data.is_empty() {
+                        let sum_sq: f32 = data.iter().map(|s| s * s).sum();
+                        let raw_rms = (sum_sq / data.len() as f32).sqrt();
+                        let scaled_rms = calculate_db_normalized_volume(raw_rms);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let prev = le.load(std::sync::atomic::Ordering::Relaxed);
+                        if now.saturating_sub(prev) >= 28 {
+                            le.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let _ = handle.emit("test-audio-volume", scaled_rms);
+                        }
                     }
                 },
                 err_fn,

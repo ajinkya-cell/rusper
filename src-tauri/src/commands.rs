@@ -4,7 +4,7 @@ use crate::injector::copy_and_inject_text;
 use crate::parse_shortcut_str;
 use crate::state::AppState;
 use std::sync::{atomic::Ordering, Mutex};
-use tauri::{AppHandle, Manager, State, Window};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 static ACTIVE_RECORDER: Mutex<Option<AudioRecorder>> = Mutex::new(None);
@@ -468,7 +468,7 @@ pub async fn stop_recording_and_process(
 }
 
 #[tauri::command]
-pub async fn accept_text(window: Window, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn accept_text(window: WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
     let text = state
         .last_transcription
         .lock()
@@ -486,7 +486,7 @@ pub async fn accept_text(window: Window, state: State<'_, AppState>) -> Result<(
 }
 
 #[tauri::command]
-pub async fn cancel_popover(window: Window) -> Result<(), String> {
+pub async fn cancel_popover(window: WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
@@ -528,7 +528,7 @@ pub async fn validate_active_text_field() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn undo_last_injection() -> Result<(), String> {
-    tokio::task::spawn_blocking(|| {
+    tokio::task::spawn_blocking(|| -> Result<(), String> {
         use enigo::{Direction, Enigo, Key, Keyboard, Settings};
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("Enigo init error: {:?}", e))?;
         

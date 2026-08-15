@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -127,9 +127,29 @@ export default function Dashboard() {
     invoke<string>('get_overlay_position').then((pos) => { if (pos) setOverlayPosition(pos); }).catch(() => {});
   }, []);
 
+  const micTestTimerRef = useRef<number | null>(null);
+
+  const stopTestingMic = useCallback(async () => {
+    if (micTestTimerRef.current) {
+      clearTimeout(micTestTimerRef.current);
+      micTestTimerRef.current = null;
+    }
+    setIsTestingMic(false);
+    setMicVolume(0);
+    try {
+      await invoke('stop_mic_test');
+    } catch (err) {
+      console.error('Stop mic test error:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const unlisten = listen<number>('test-audio-volume', (event) => setMicVolume(event.payload));
-    return () => { unlisten.then((fn: () => void) => fn()); };
+    return () => {
+      unlisten.then((fn: () => void) => fn());
+      if (micTestTimerRef.current) clearTimeout(micTestTimerRef.current);
+      invoke('stop_mic_test').catch(() => {});
+    };
   }, []);
 
   const handleDeviceChange = async (deviceName: string) => {
@@ -138,17 +158,37 @@ export default function Dashboard() {
       await invoke('set_selected_audio_device', { deviceName });
       setHotkeySaveStatus(`Microphone set to "${deviceName}" ✓`);
       setTimeout(() => setHotkeySaveStatus(null), 3000);
+      if (isTestingMic) {
+        if (micTestTimerRef.current) clearTimeout(micTestTimerRef.current);
+        await invoke('start_mic_test');
+        micTestTimerRef.current = window.setTimeout(() => {
+          stopTestingMic();
+          setHotkeySaveStatus('Mic test finished (1 min limit reached) ✓');
+          setTimeout(() => setHotkeySaveStatus(null), 3000);
+        }, 60000);
+      }
     } catch (err) { console.error('Device change error:', err); }
   };
 
   const toggleMicTest = async () => {
     if (isTestingMic) {
-      setIsTestingMic(false);
-      setMicVolume(0);
-      try { await invoke('stop_mic_test'); } catch (err) { console.error('Stop mic test error:', err); }
+      await stopTestingMic();
     } else {
       setIsTestingMic(true);
-      try { await invoke('start_mic_test'); } catch (err) { console.error('Start mic test error:', err); setIsTestingMic(false); }
+      try {
+        await invoke('start_mic_test');
+        if (micTestTimerRef.current) clearTimeout(micTestTimerRef.current);
+        micTestTimerRef.current = window.setTimeout(() => {
+          stopTestingMic();
+          setHotkeySaveStatus('Mic test finished (1 min limit reached) ✓');
+          setTimeout(() => setHotkeySaveStatus(null), 3000);
+        }, 60000);
+      } catch (err) {
+        console.error('Start mic test error:', err);
+        setIsTestingMic(false);
+        setHotkeySaveStatus(`Mic test error: ${err}`);
+        setTimeout(() => setHotkeySaveStatus(null), 4000);
+      }
     }
   };
 
@@ -333,12 +373,25 @@ export default function Dashboard() {
                       </div>
                       <span className="font-code text-xs font-bold text-white shrink-0 w-12 text-right">{Math.min(100, Math.round(micVolume * 100))}%</span>
                     </div>
-                    <div className="flex items-end justify-between h-12 pt-2 px-2 bg-black/30 rounded-xl">
+                    <div className="flex items-end justify-between h-14 pt-2 px-3 bg-black/40 rounded-xl border border-white/[0.04] overflow-hidden">
                       {Array.from({ length: 16 }).map((_, i) => {
+                        const taper = Math.sin(((i + 1) / 17) * Math.PI);
                         const baseVol = Math.round(micVolume * 100);
-                        const wave = Math.sin(i * 0.7 + baseVol * 0.1);
-                        const heightPct = isTestingMic ? Math.min(100, Math.max(14, Math.round(baseVol * (0.6 + wave * 0.4)))) : 14;
-                        return <div key={i} className="w-2 bg-gradient-to-t from-emerald-500 via-teal-400 to-white rounded-full transition-all duration-75 shadow-[0_0_4px_rgba(45,212,191,0.6)]" style={{ height: `${heightPct}%` }} />;
+                        const wave = Math.sin(i * 0.65 + baseVol * 0.08);
+                        const dynamicHeight = isTestingMic && baseVol > 0
+                          ? Math.min(100, Math.max(12, Math.round(baseVol * taper * (0.7 + wave * 0.3))))
+                          : 12;
+                        return (
+                          <div
+                            key={i}
+                            className={`w-2 rounded-full transition-all duration-75 ${
+                              isTestingMic && baseVol > 0
+                                ? 'bg-gradient-to-t from-emerald-500 via-teal-400 to-white shadow-[0_0_6px_rgba(45,212,191,0.7)]'
+                                : 'bg-white/10'
+                            }`}
+                            style={{ height: `${dynamicHeight}%` }}
+                          />
+                        );
                       })}
                     </div>
                   </div>
@@ -394,9 +447,18 @@ export default function Dashboard() {
                   <p className="font-ui text-xs text-zinc-400 mt-0.5">Configure OS-wide global key triggers and floating overlay position.</p>
                 </div>
                 {hotkeySaveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{hotkeySaveStatus}</div>}
-                <div className="skeuo-inner-socket rounded-2xl p-4 flex items-center justify-between border border-white/[0.04]">
-                  <h3 className="font-ui text-xs font-semibold text-white">Current Global Trigger</h3>
-                  <span className="skeuo-raised-btn px-4 py-2 rounded-xl text-xs font-code font-bold text-zinc-950">{selectedShortcut}</span>
+                <div className="skeuo-inner-socket rounded-2xl px-6 py-4 flex items-center justify-between border border-white/[0.06] bg-[#09090c]/80">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-ui text-sm font-semibold text-white tracking-tight">
+                      Active Global Key Trigger
+                    </span>
+                    <span className="font-ui text-[11px] text-zinc-400">
+                      Press this key anywhere in Windows to start dictating
+                    </span>
+                  </div>
+                  <span className="skeuo-raised-btn px-6 py-2.5 rounded-xl text-sm font-code font-bold text-zinc-950 tracking-wide shadow-md shrink-0">
+                    {selectedShortcut}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-3">
                   <label className="font-ui text-xs font-semibold text-zinc-300">Quick Shortcut Presets</label>
