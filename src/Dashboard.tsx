@@ -256,7 +256,7 @@ export default function Dashboard() {
     { id: 'mode', label: 'Dictation Modes', icon: '🎯' },
     { id: 'hotkeys', label: 'Hotkeys & Overlay', icon: '⌨️' },
     { id: 'prompts', label: 'Prompt Engine', icon: '🧠' },
-    { id: 'article', label: 'Architecture Essay', icon: '📖' },
+    { id: 'article', label: 'Why', icon: '💡' },
   ];
 
   return (
@@ -562,25 +562,33 @@ export default function Dashboard() {
             )}
 
             {activeTab === 'article' && (
-              <motion.div key="article" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6 max-w-3xl">
+              <motion.div key="article" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6 max-w-2xl">
                 <div>
                   <div className="flex items-center gap-2 font-code text-xs text-zinc-400 mb-1">
-                    <span>ESSAY</span> • <span>AUGUST 2026</span> • <span>5 MIN READ</span>
+                    <span>STORY</span> • <span>THE INSPIRATION</span>
                   </div>
-                  <h2 className="font-display text-3xl font-normal text-white tracking-normal leading-snug">Crafting Rusper: How an AI Voice Dictation Engine Was Built Overnight</h2>
-                  <p className="font-ui text-xs text-zinc-400 mt-1">An architectural retrospective on pairing Rust audio threads with Groq Whisper and modern React skeuomorphs.</p>
+                  <h2 className="font-display text-3xl font-normal text-white tracking-normal leading-snug">Why I Built Rusper</h2>
+                  <p className="font-ui text-xs text-zinc-400 mt-1">A personal project built for speed, simplicity, and freedom.</p>
                 </div>
-                <article className="font-ui text-zinc-300 leading-relaxed flex flex-col gap-4 text-xs">
-                  <p>The story of <strong>Rusper</strong> began with a simple frustration: voice dictation tools on desktop were either bloated, slow, or locked behind expensive monthly subscriptions. We wanted something instant—a sleek utility that stays ready in the Windows system tray and converts speech into active text within milliseconds of pressing a hotkey.</p>
-                  <h3 className="font-display text-lg font-normal text-white mt-3">1. The Multi-Threaded Audio Pipeline in Rust</h3>
-                  <p>Using Tauri v2 and Rust, we leveraged <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">cpal</code> to hook directly into the Windows WASAPI audio subsystem at 16kHz mono sampling. Audio samples are streamed asynchronously into an in-memory buffer and flushed to disk using <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">hound::WavWriter</code>.</p>
-                  <h3 className="font-display text-lg font-normal text-white mt-3">2. Sub-Second Transcriptions with Groq Whisper</h3>
-                  <p>The moment you hit <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">Enter</kbd>, the recorded audio payload is posted via multipart binary stream directly to Groq Cloud's ultra-fast Whisper engine (<code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">whisper-large-v3-turbo</code>). Transcriptions return in under 300 milliseconds.</p>
-                  <h3 className="font-display text-lg font-normal text-white mt-3">3. Clipboard Injection & Enigo Key Simulation</h3>
-                  <p>Once transcribed, Rusper writes the text payload directly to the OS clipboard via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">arboard</code> and simulates a physical <kbd className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">Ctrl + V</kbd> keystroke via <code className="bg-zinc-900 text-zinc-200 px-1.5 py-0.5 rounded font-code text-[11px]">enigo</code>, pasting your speech directly into Notepad, Word, or your web browser.</p>
-                  <h3 className="font-display text-lg font-normal text-white mt-3">4. Skeuomorphic 3D Beveled Design</h3>
-                  <p>Finally, the interface was crafted using a tactile 3D beveled dark charcoal chassis with recessed obsidian sockets, top specular light catches, and glowing white waveform animations.</p>
-                </article>
+                <div className="skeuo-inner-socket rounded-2xl p-6 flex flex-col gap-4 border border-white/[0.04] bg-[#09090c]/60">
+                  <article className="font-ui text-zinc-300 leading-relaxed flex flex-col gap-4 text-sm">
+                    <p>
+                      Recently, I saw an advertisement for tools like Whisper Flow and other voice dictation apps. The core concept felt magical: just talk, and your thoughts appear instantly on the screen without typing.
+                    </p>
+                    <p>
+                      However, when I checked them out, I realized almost all of them were either bloated or locked behind recurring monthly subscriptions. I wondered: <em>why should something as natural as speaking to your computer cost a monthly fee?</em>
+                    </p>
+                    <p>
+                      I had never worked with <strong>Rust</strong> before. But I did know one thing: <strong>Rust makes desktop software blazingly fast and lightweight.</strong> So I teamed up with <strong>Antigravity</strong> to build <strong>Rusper</strong> from scratch.
+                    </p>
+                    <p>
+                      Rusper is <strong>100% free</strong> and open. There are no subscriptions, no credit cards, and no paywalls. All you need is your own free Groq API key, and it works like an absolute charm—transcribing your voice in milliseconds across any code editor, browser, or app you use.
+                    </p>
+                    <p className="text-zinc-400 text-xs italic pt-2 border-t border-white/[0.06]">
+                      I hope Rusper saves you countless hours of typing and lets your ideas flow naturally. Enjoy! ✨
+                    </p>
+                  </article>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

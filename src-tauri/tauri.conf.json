@@ -22,7 +22,8 @@
         "shadow": false,
         "alwaysOnTop": true,
         "center": true,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "visible": false
       },
       {
         "title": "Rusper Dashboard",

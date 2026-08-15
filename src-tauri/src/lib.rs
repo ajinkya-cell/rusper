@@ -136,6 +136,7 @@ pub fn run() {
 
             // Dynamic Window Size & Position based on dictation mode and saved overlay position
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
                 commands::apply_pure_window_attributes(&window);
                 let handle = app.handle().clone();
                 let mode_clone = saved_mode.clone();
