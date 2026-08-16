@@ -5,21 +5,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './Dashboard';
 
 function WaveformMarquee({ compact }: { compact?: boolean }) {
-  const barCount = compact ? 16 : 10;
+  const barCount = compact ? 12 : 10;
   const bars = Array.from({ length: barCount }, (_, index) => index);
 
   return (
-    <div className={`flex items-center justify-center gap-1.5 px-2 ${compact ? 'h-8 py-0.5' : 'h-14'}`}>
+    <div className={`flex items-center justify-center gap-1.5 px-3 overflow-hidden ${compact ? 'h-7 py-0.5' : 'h-14'}`}>
       {bars.map((index) => {
-        const taper = compact ? 1 : Math.sin(((index + 1) / (barCount + 1)) * Math.PI);
-        const minH = compact ? 20 : Math.round(15 * taper + 10);
-        const midH = compact ? 35 + (index % 6) * 12 : Math.round((35 + (index % 5) * 14) * taper);
-        const maxH = compact ? 95 : Math.round(95 * taper + 5);
+        const taper = Math.sin(((index + 1) / (barCount + 1)) * Math.PI);
+        const minH = Math.round(18 * taper + 8);
+        const midH = Math.round((35 + (index % 4) * 12) * taper + 12);
+        const maxH = Math.round(75 * taper + 15);
 
         return (
           <motion.span
             key={index}
-            className={`block shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] ${
+            className={`block shrink-0 rounded-full bg-white shadow-[0_0_5px_rgba(255,255,255,0.7)] ${
               compact ? 'w-1.5' : 'w-2'
             }`}
             animate={{
@@ -230,13 +230,14 @@ export default function App() {
     >
       <motion.div
         tabIndex={-1}
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
-        className={`skeuo-bevel-card text-white relative overflow-hidden outline-none focus:outline-none transition-all duration-200 ${
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.12, ease: 'easeOut' }}
+        style={{ borderRadius: isPushToTalk ? '9999px' : '16px' }}
+        className={`skeuo-capsule-card text-white relative overflow-hidden outline-none focus:outline-none transition-all duration-150 ${
           isPushToTalk
-            ? 'w-[260px] h-[52px] rounded-full px-3 py-1.5 flex flex-row items-center justify-center'
-            : 'w-[360px] h-[200px] p-3.5 rounded-2xl flex flex-col justify-between'
+            ? 'w-full h-full !rounded-full px-3 py-1 flex flex-row items-center justify-center'
+            : 'w-full h-full p-3.5 rounded-2xl flex flex-col justify-between'
         }`}
       >
 

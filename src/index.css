@@ -77,17 +77,27 @@ main:focus, main:focus-visible, body:focus, html:focus {
 }
 
 @layer utilities {
-  /* Tactile Obsidian Glass Card */
-  .skeuo-bevel-card {
+  /* Floating Overlay Capsule Card (Zero-Bleed for Transparent Window) */
+  .skeuo-capsule-card {
     position: relative;
-    background-color: #121214;
-    border-radius: 16px;
+    background-color: #0f0f13;
+    border: 1.5px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.22) inset,
+      0 -1px 0 0 rgba(0, 0, 0, 0.95) inset,
+      inset 0 0 8px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Full Dashboard Elevated Panels & Cards */
+  .skeuo-dashboard-card, .skeuo-bevel-card {
+    position: relative;
+    background: linear-gradient(180deg, #151519 0%, #0d0d10 100%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.1) inset,
+      0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
       0 -1px 0 0 rgba(0, 0, 0, 0.8) inset,
-      0 12px 28px -4px rgba(0, 0, 0, 0.7),
-      0 4px 10px rgba(0, 0, 0, 0.4);
+      0 20px 45px -12px rgba(0, 0, 0, 0.9),
+      0 6px 18px rgba(0, 0, 0, 0.6);
   }
 
   /* Tactile Recessed Sockets */

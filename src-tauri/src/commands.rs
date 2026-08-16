@@ -296,35 +296,6 @@ pub fn save_system_prompt_str(prompt: &str) {
 
 pub fn apply_pure_window_attributes(window: &tauri::WebviewWindow) {
     let _ = window.set_shadow(false);
-
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::Graphics::Dwm::{
-            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
-            DWMWCP_DONOTROUND,
-        };
-        use windows_sys::Win32::Foundation::HWND;
-
-        if let Ok(hwnd) = window.hwnd() {
-            let hwnd_val = hwnd.0 as HWND;
-            let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
-            unsafe {
-                DwmSetWindowAttribute(
-                    hwnd_val,
-                    DWMWA_BORDER_COLOR as u32,
-                    &color_none as *const _ as *const _,
-                    std::mem::size_of::<u32>() as u32,
-                );
-                let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
-                DwmSetWindowAttribute(
-                    hwnd_val,
-                    DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                    &corner_pref as *const _ as *const _,
-                    std::mem::size_of::<u32>() as u32,
-                );
-            }
-        }
-    }
 }
 
 #[tauri::command]

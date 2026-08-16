@@ -260,8 +260,8 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="w-screen h-screen bg-[#0d0d10] text-white flex flex-col select-none overflow-hidden font-ui">
-      <header className="px-8 pt-5 pb-3 flex items-center justify-between shrink-0 border-b border-white/[0.06] bg-[#111114]">
+    <div className="w-screen h-screen bg-[#07070a] text-white flex flex-col select-none overflow-hidden font-ui">
+      <header className="px-8 pt-5 pb-3 flex items-center justify-between shrink-0 border-b border-white/[0.08] bg-[#0c0c0f]">
         <h1 className="font-display italic text-3xl font-normal tracking-wide text-white">
           Rusper
         </h1>
@@ -293,7 +293,7 @@ export default function Dashboard() {
               );
             })}
           </nav>
-          <div className="skeuo-bevel-card rounded-2xl p-4 flex flex-col gap-2 mt-auto">
+          <div className="skeuo-dashboard-card rounded-2xl p-4 flex flex-col gap-2 mt-auto">
             <div className="flex items-center justify-between">
               <span className="font-ui text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Active Trigger</span>
               <span className="font-code text-[10px] text-zinc-400">{dictationMode === 'interactive' ? 'Interactive' : 'Push-to-Talk'}</span>
@@ -305,7 +305,7 @@ export default function Dashboard() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto skeuo-bevel-card rounded-2xl p-6 flex flex-col gap-6">
+        <main className="flex-1 overflow-y-auto skeuo-dashboard-card rounded-2xl p-6 flex flex-col gap-6">
           <AnimatePresence mode="wait">
             {activeTab === 'api' && (
               <motion.div key="api" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
