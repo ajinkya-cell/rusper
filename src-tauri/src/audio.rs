@@ -341,6 +341,7 @@ static SILENCE_START: Mutex<Option<Instant>> = Mutex::new(None);
 static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
 static SILENCE_EMITTED: AtomicBool = AtomicBool::new(false);
 static MAX_DURATION_EMITTED: AtomicBool = AtomicBool::new(false);
+static LAST_RECORDING_EMIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn emit_volume(samples: &[f32], app_handle: &AppHandle, buffer: &Arc<Mutex<Vec<f32>>>) {
     if samples.is_empty() { return; }
@@ -354,6 +355,7 @@ fn emit_volume(samples: &[f32], app_handle: &AppHandle, buffer: &Arc<Mutex<Vec<f
             *guard = Some(now);
             SILENCE_EMITTED.store(false, Ordering::SeqCst);
             MAX_DURATION_EMITTED.store(false, Ordering::SeqCst);
+            LAST_RECORDING_EMIT.store(0, Ordering::SeqCst);
             let mut silence_guard = SILENCE_START.lock().unwrap();
             *silence_guard = None;
         }
@@ -369,8 +371,17 @@ fn emit_volume(samples: &[f32], app_handle: &AppHandle, buffer: &Arc<Mutex<Vec<f
 
     let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
     let rms = (sum_sq / samples.len() as f32).sqrt();
+    let scaled_rms = calculate_db_normalized_volume(rms);
 
-    let _ = app_handle.emit("audio-volume", rms);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let prev = LAST_RECORDING_EMIT.load(Ordering::Relaxed);
+    if now_ms.saturating_sub(prev) >= 25 {
+        LAST_RECORDING_EMIT.store(now_ms, Ordering::Relaxed);
+        let _ = app_handle.emit("audio-volume", scaled_rms);
+    }
 
     // 2. Check 15-Second Silence Detection Limit
     if rms < 0.008 {

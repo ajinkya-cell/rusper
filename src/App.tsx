@@ -3,42 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './Dashboard';
-
-function WaveformMarquee({ compact }: { compact?: boolean }) {
-  const barCount = compact ? 12 : 10;
-  const bars = Array.from({ length: barCount }, (_, index) => index);
-
-  return (
-    <div className={`flex items-center justify-center gap-1.5 px-3 overflow-hidden ${compact ? 'h-7 py-0.5' : 'h-14'}`}>
-      {bars.map((index) => {
-        const taper = Math.sin(((index + 1) / (barCount + 1)) * Math.PI);
-        const minH = Math.round(18 * taper + 8);
-        const midH = Math.round((35 + (index % 4) * 12) * taper + 12);
-        const maxH = Math.round(75 * taper + 15);
-
-        return (
-          <motion.span
-            key={index}
-            className={`block shrink-0 rounded-full bg-white shadow-[0_0_5px_rgba(255,255,255,0.7)] ${
-              compact ? 'w-1.5' : 'w-2'
-            }`}
-            animate={{
-              height: [`${minH}%`, `${midH}%`, `${maxH}%`, `${minH}%`],
-              opacity: [0.75, 1, 0.75],
-            }}
-            transition={{
-              duration: 0.35 + (index % 4) * 0.08,
-              ease: 'easeInOut',
-              repeat: Infinity,
-              repeatType: 'reverse',
-              delay: index * 0.04,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
+import AudioReactiveWaveform from './components/AudioReactiveWaveform';
 
 export default function App() {
   const isDashboard = window.location.hash.includes('dashboard');
@@ -53,6 +18,8 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [dictationMode, setDictationMode] = useState<'interactive' | 'push_to_talk'>('interactive');
   const [toast, setToast] = useState<{ message: string; type: 'warning' | 'info' | 'success' } | null>(null);
+  const [audioVolume, setAudioVolume] = useState<number>(0);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
 
   const showToast = useCallback((message: string, type: 'warning' | 'info' | 'success' = 'info') => {
     setToast({ message, type });
@@ -98,6 +65,37 @@ export default function App() {
       setViewState('review');
     }
   }, [showToast]);
+
+  // Listen for real-time audio volume stream from Rust audio thread
+  useEffect(() => {
+    const unlistenVol = listen<number>('audio-volume', (event) => {
+      if (typeof event.payload === 'number') {
+        setAudioVolume(event.payload);
+      }
+    });
+
+    return () => {
+      unlistenVol.then((fn) => fn());
+    };
+  }, []);
+
+  // Track speech duration timer during active recording
+  useEffect(() => {
+    let timer: number | null = null;
+    if (viewState === 'recording') {
+      setRecordingDuration(0);
+      timer = window.setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingDuration(0);
+      setAudioVolume(0);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [viewState]);
 
   // Listen for backend UI state, silence timeout, and max recording duration events
   useEffect(() => {
@@ -236,7 +234,7 @@ export default function App() {
         style={{ borderRadius: isPushToTalk ? '9999px' : '16px' }}
         className={`skeuo-capsule-card text-white relative overflow-hidden outline-none focus:outline-none transition-all duration-150 ${
           isPushToTalk
-            ? 'w-full h-full !rounded-full px-3 py-1 flex flex-row items-center justify-center'
+            ? 'w-full h-full !rounded-full px-2 py-0.5 flex flex-row items-center justify-center'
             : 'w-full h-full p-3.5 rounded-2xl flex flex-col justify-between'
         }`}
       >
@@ -296,18 +294,27 @@ export default function App() {
               className={`flex ${isPushToTalk ? 'items-center justify-center w-full h-full' : 'flex-col justify-center flex-1 gap-2'}`}
             >
               {isPushToTalk ? (
-                <div className="flex-1 flex items-center justify-center overflow-hidden">
-                  <WaveformMarquee compact={true} />
+                <div className="flex-1 flex items-center justify-center overflow-hidden w-full h-full">
+                  <AudioReactiveWaveform
+                    volume={audioVolume}
+                    compact={true}
+                    showTimer={false}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-3 w-full my-auto">
                   <div className="flex-1 flex items-center justify-center px-1 overflow-hidden">
-                    <WaveformMarquee compact={false} />
+                    <AudioReactiveWaveform
+                      volume={audioVolume}
+                      compact={false}
+                      showTimer={true}
+                      durationSeconds={recordingDuration}
+                    />
                   </div>
                   <button
                     onClick={handleStopRecording}
                     title="Done & Transcribe (Enter)"
-                    className="skeuo-raised-btn text-xs font-ui font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer select-none text-zinc-950 shrink-0"
+                    className="skeuo-raised-btn text-xs font-ui font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer select-none text-zinc-950 shrink-0 shadow-md"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"></polyline>

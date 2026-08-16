@@ -316,7 +316,7 @@ pub async fn sync_window_size(app: AppHandle, mode: String) -> Result<(), String
             let monitor_size = monitor.size();
             let scale_factor = monitor.scale_factor();
             let (w_logical, h_logical) = if mode == "push_to_talk" {
-                (260.0, 52.0)
+                (154.0, 44.0)
             } else {
                 (360.0, 200.0)
             };

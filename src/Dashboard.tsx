@@ -313,9 +313,11 @@ export default function Dashboard() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto skeuo-dashboard-card rounded-2xl p-6 flex flex-col gap-6">
-          <AnimatePresence mode="wait">
-            {activeTab === 'api' && (
+        <main className="flex-1 skeuo-dashboard-card rounded-2xl overflow-hidden flex flex-col relative">
+          {/* Scrollable Viewport */}
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 relative scroll-smooth">
+            <AnimatePresence mode="wait">
+              {activeTab === 'api' && (
               <motion.div key="api" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex flex-col gap-6">
                 <div>
                   <h2 className="font-display text-2xl font-normal text-white">Groq Cloud API & Whisper Model</h2>
@@ -624,6 +626,7 @@ export default function Dashboard() {
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </main>
       </div>
     </div>
