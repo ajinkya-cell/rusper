@@ -3,5 +3,5 @@
 fn main() {
     let _ = dotenvy::dotenv();
     env_logger::init();
-    flow_dictate_lib::run();
+    rusper_lib::run();
 }

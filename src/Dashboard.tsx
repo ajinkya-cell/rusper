@@ -8,6 +8,7 @@ type Tab = 'api' | 'audio' | 'mode' | 'hotkeys' | 'prompts' | 'article';
 const PRESET_SHORTCUTS = [
   'ScrollLock',
   'Pause',
+  'Insert',
   'F8',
   'F9',
   'F12',
@@ -222,23 +223,27 @@ export default function Dashboard() {
   };
 
   const handleApplyPresetShortcut = async (shortcut: string) => {
-    setSelectedShortcut(shortcut);
     try {
-      await invoke('register_hotkey', { shortcut });
+      await invoke('register_hotkey', { hotkey: shortcut, shortcut });
+      setSelectedShortcut(shortcut);
       setHotkeySaveStatus(`Global trigger registered: "${shortcut}" ✓`);
-    } catch (err) { setHotkeySaveStatus(`Hotkey registration failed: ${err}`); }
-    setTimeout(() => setHotkeySaveStatus(null), 3000);
+    } catch (err) {
+      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
+    }
+    setTimeout(() => setHotkeySaveStatus(null), 3500);
   };
 
   const handleSaveCustomShortcut = async () => {
     let shortcut = customKey;
     if (customModifier !== 'None') shortcut = `${customModifier} + ${customKey}`;
-    setSelectedShortcut(shortcut);
     try {
-      await invoke('register_hotkey', { shortcut });
+      await invoke('register_hotkey', { hotkey: shortcut, shortcut });
+      setSelectedShortcut(shortcut);
       setHotkeySaveStatus(`Custom shortcut registered: "${shortcut}" ✓`);
-    } catch (err) { setHotkeySaveStatus(`Hotkey registration failed: ${err}`); }
-    setTimeout(() => setHotkeySaveStatus(null), 3000);
+    } catch (err) {
+      setHotkeySaveStatus(`Hotkey registration failed: ${err}`);
+    }
+    setTimeout(() => setHotkeySaveStatus(null), 3500);
   };
 
   const handleSetOverlayPosition = async (posId: string) => {
@@ -262,9 +267,12 @@ export default function Dashboard() {
   return (
     <div className="w-screen h-screen bg-[#07070a] text-white flex flex-col select-none overflow-hidden font-ui">
       <header className="px-8 pt-5 pb-3 flex items-center justify-between shrink-0 border-b border-white/[0.08] bg-[#0c0c0f]">
-        <h1 className="font-display italic text-3xl font-normal tracking-wide text-white">
-          Rusper
-        </h1>
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="Rusper Logo" className="w-8 h-8 rounded-xl object-contain shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" />
+          <h1 className="font-display italic text-3xl font-normal tracking-wide text-white">
+            Rusper
+          </h1>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden p-6 gap-6 pt-4">
@@ -446,7 +454,17 @@ export default function Dashboard() {
                   <h2 className="font-display text-2xl font-normal text-white">Global Hotkeys & Screen Placement</h2>
                   <p className="font-ui text-xs text-zinc-400 mt-0.5">Configure OS-wide global key triggers and floating overlay position.</p>
                 </div>
-                {hotkeySaveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{hotkeySaveStatus}</div>}
+                {hotkeySaveStatus && (
+                  <div
+                    className={`text-xs px-4 py-2.5 rounded-xl font-medium font-ui border transition-all ${
+                      hotkeySaveStatus.includes('failed') || hotkeySaveStatus.includes('error') || hotkeySaveStatus.includes('Failed')
+                        ? 'bg-red-950/80 border-red-800 text-red-300'
+                        : 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+                    }`}
+                  >
+                    {hotkeySaveStatus}
+                  </div>
+                )}
                 <div className="skeuo-inner-socket rounded-2xl px-6 py-4 flex items-center justify-between border border-white/[0.06] bg-[#09090c]/80">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-ui text-sm font-semibold text-white tracking-tight">
@@ -479,12 +497,14 @@ export default function Dashboard() {
                       <option value="Ctrl + Shift">Ctrl + Shift</option>
                       <option value="Alt">Alt</option>
                       <option value="Ctrl">Ctrl</option>
+                      <option value="Shift">Shift</option>
                     </select>
                     <span className="font-ui text-xs text-zinc-400 font-bold">+</span>
                     <select value={customKey} onChange={(e) => setCustomKey(e.target.value)} className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-code cursor-pointer">
+                      <option value="Insert">Insert</option>
                       <option value="ScrollLock">ScrollLock</option>
                       <option value="Pause">Pause</option>
-                      <option value="Insert">Insert</option>
+                      <option value="Space">Space</option>
                       <option value="F1">F1</option>
                       <option value="F2">F2</option>
                       <option value="F3">F3</option>
@@ -497,6 +517,18 @@ export default function Dashboard() {
                       <option value="F10">F10</option>
                       <option value="F11">F11</option>
                       <option value="F12">F12</option>
+                      <option value="D">D</option>
+                      <option value="S">S</option>
+                      <option value="A">A</option>
+                      <option value="V">V</option>
+                      <option value="Q">Q</option>
+                      <option value="W">W</option>
+                      <option value="Delete">Delete</option>
+                      <option value="Home">Home</option>
+                      <option value="End">End</option>
+                      <option value="PageUp">PageUp</option>
+                      <option value="PageDown">PageDown</option>
+                      <option value="CapsLock">CapsLock</option>
                     </select>
                     <button onClick={handleSaveCustomShortcut} className="skeuo-raised-btn font-ui text-zinc-950 px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ml-auto">Set Hotkey</button>
                   </div>

@@ -133,11 +133,21 @@ pub async fn get_saved_hotkey() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn register_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
-    let shortcut = parse_shortcut_str(&hotkey).ok_or_else(|| "Invalid shortcut combination".to_string())?;
+pub async fn register_hotkey(
+    app: AppHandle,
+    hotkey: Option<String>,
+    shortcut: Option<String>,
+) -> Result<(), String> {
+    let key_str = hotkey
+        .or(shortcut)
+        .ok_or_else(|| "No hotkey combination provided".to_string())?;
+    let shortcut_obj = parse_shortcut_str(&key_str)
+        .ok_or_else(|| format!("Invalid shortcut combination: '{}'", key_str))?;
     let _ = app.global_shortcut().unregister_all();
-    app.global_shortcut().register(shortcut).map_err(|e| format!("Failed to register OS hotkey: {}", e))?;
-    save_hotkey_str(&hotkey);
+    app.global_shortcut()
+        .register(shortcut_obj)
+        .map_err(|e| format!("Failed to register OS hotkey '{}': {}", key_str, e))?;
+    save_hotkey_str(&key_str);
     Ok(())
 }
 

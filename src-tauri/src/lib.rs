@@ -33,12 +33,42 @@ pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
     }
 
     let code = match font_key.to_lowercase().as_str() {
-        "d" => Code::KeyD,
-        "s" => Code::KeyS,
         "a" => Code::KeyA,
-        "v" => Code::KeyV,
+        "b" => Code::KeyB,
+        "c" => Code::KeyC,
+        "d" => Code::KeyD,
+        "e" => Code::KeyE,
+        "f" => Code::KeyF,
+        "g" => Code::KeyG,
+        "h" => Code::KeyH,
+        "i" => Code::KeyI,
+        "j" => Code::KeyJ,
+        "k" => Code::KeyK,
+        "l" => Code::KeyL,
+        "m" => Code::KeyM,
+        "n" => Code::KeyN,
+        "o" => Code::KeyO,
+        "p" => Code::KeyP,
         "q" => Code::KeyQ,
+        "r" => Code::KeyR,
+        "s" => Code::KeyS,
+        "t" => Code::KeyT,
+        "u" => Code::KeyU,
+        "v" => Code::KeyV,
         "w" => Code::KeyW,
+        "x" => Code::KeyX,
+        "y" => Code::KeyY,
+        "z" => Code::KeyZ,
+        "0" | "digit0" => Code::Digit0,
+        "1" | "digit1" => Code::Digit1,
+        "2" | "digit2" => Code::Digit2,
+        "3" | "digit3" => Code::Digit3,
+        "4" | "digit4" => Code::Digit4,
+        "5" | "digit5" => Code::Digit5,
+        "6" | "digit6" => Code::Digit6,
+        "7" | "digit7" => Code::Digit7,
+        "8" | "digit8" => Code::Digit8,
+        "9" | "digit9" => Code::Digit9,
         "space" | "spacebar" => Code::Space,
         "f1" => Code::F1,
         "f2" => Code::F2,
@@ -55,7 +85,15 @@ pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
         "scrolllock" | "scroll_lock" => Code::ScrollLock,
         "pause" | "pausebreak" => Code::Pause,
         "insert" => Code::Insert,
+        "delete" => Code::Delete,
+        "home" => Code::Home,
+        "end" => Code::End,
+        "pageup" | "page_up" => Code::PageUp,
+        "pagedown" | "page_down" => Code::PageDown,
         "capslock" | "caps_lock" => Code::CapsLock,
+        "numlock" | "num_lock" => Code::NumLock,
+        "printscreen" | "print_screen" => Code::PrintScreen,
+        "backquote" | "grave" | "`" | "~" => Code::Backquote,
         _ => Code::KeyD,
     };
 
@@ -168,8 +206,12 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Quit Rusper", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&dashboard_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
+            let mut tray_builder = TrayIconBuilder::new().menu(&menu);
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "dashboard" => {
                         if let Some(window) = app.get_webview_window("dashboard") {

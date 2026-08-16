@@ -244,9 +244,12 @@ export default function App() {
         {/* Top Header Navigation (Interactive Mode Only) */}
         {!isPushToTalk && (
           <div className="flex items-center justify-between text-zinc-400 shrink-0 pb-1 border-b border-white/5">
-            <span className="font-display italic text-2xl text-white font-normal tracking-wide">
-              Rusper
-            </span>
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="Rusper" className="w-5 h-5 rounded-md object-contain shadow-sm border border-white/10" />
+              <span className="font-display italic text-2xl text-white font-normal tracking-wide">
+                Rusper
+              </span>
+            </div>
             <button
               onClick={() => setViewState(viewState === 'settings' ? 'recording' : 'settings')}
               title="Configure Settings"
