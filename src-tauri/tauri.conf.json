@@ -14,8 +14,8 @@
       {
         "title": "Rusper",
         "label": "main",
-        "width": 360,
-        "height": 200,
+        "width": 160,
+        "height": 44,
         "resizable": false,
         "decorations": false,
         "transparent": true,

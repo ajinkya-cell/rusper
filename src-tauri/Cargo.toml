@@ -33,5 +33,7 @@ dotenvy = "0.15"
 windows-sys = { version = "0.52", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Dwm",
-    "Win32_Foundation"
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_UI_Controls"
 ] }

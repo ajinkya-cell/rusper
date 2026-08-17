@@ -305,7 +305,37 @@ pub fn save_system_prompt_str(prompt: &str) {
 }
 
 pub fn apply_pure_window_attributes(window: &tauri::WebviewWindow) {
-    let _ = window.set_shadow(false);
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+            DWMWCP_DONOTROUND,
+        };
+        use windows_sys::Win32::Foundation::HWND;
+
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd_val = hwnd.0 as HWND;
+            unsafe {
+                // 1. Prevent Windows 11 default window frame rounding
+                let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
+                let _ = DwmSetWindowAttribute(
+                    hwnd_val,
+                    DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                    &corner_pref as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+
+                // 2. Remove Windows 11 1px border line
+                let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+                let _ = DwmSetWindowAttribute(
+                    hwnd_val,
+                    DWMWA_BORDER_COLOR as u32,
+                    &color_none as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -316,12 +346,12 @@ pub async fn sync_window_size(app: AppHandle, mode: String) -> Result<(), String
             let monitor_size = monitor.size();
             let scale_factor = monitor.scale_factor();
             let (w_logical, h_logical) = if mode == "push_to_talk" {
-                (154.0, 44.0)
+                (160.0, 44.0)
             } else {
                 (360.0, 200.0)
             };
-            let window_width = (w_logical * scale_factor) as u32;
-            let window_height = (h_logical * scale_factor) as u32;
+            let window_width = (w_logical * scale_factor).round() as u32;
+            let window_height = (h_logical * scale_factor).round() as u32;
             let pos_str = get_saved_overlay_position_str();
             let (x, y) = compute_window_position(
                 monitor_size.width,
@@ -334,6 +364,7 @@ pub async fn sync_window_size(app: AppHandle, mode: String) -> Result<(), String
 
             let _ = main_window.set_size(tauri::PhysicalSize::new(window_width, window_height));
             let _ = main_window.set_position(tauri::PhysicalPosition::new(x, y));
+            apply_pure_window_attributes(&main_window);
         }
     }
     Ok(())

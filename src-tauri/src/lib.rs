@@ -101,6 +101,7 @@ pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
 }
 
 pub fn run() {
+    std::env::set_var("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "0");
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(
@@ -119,8 +120,14 @@ pub fn run() {
 
                         if let Some(window) = app.get_webview_window("main") {
                             commands::apply_pure_window_attributes(&window);
-                            let _ = commands::sync_window_size(app.clone(), mode.clone());
+                            let handle_sz = app.clone();
+                            let mode_sz = mode.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::sync_window_size(handle_sz, mode_sz).await;
+                            });
                             let _ = window.show();
+                            // Re-strip DWM frame border/shadow after the window becomes visible
+                            commands::apply_pure_window_attributes(&window);
                             if mode != "push_to_talk" {
                                 let _ = window.set_focus();
                             }

@@ -1,6 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
 @import "tailwindcss";
 
+html, body, #root, main {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 @layer base {
   :root {
     --font-display: 'Instrument Serif', Georgia, serif;
@@ -79,15 +89,12 @@ main:focus, main:focus-visible, body:focus, html:focus {
 }
 
 @layer utilities {
-  /* Floating Overlay Capsule Card (Zero-Bleed for Transparent Window) */
+  /* Floating Overlay Capsule Card */
   .skeuo-capsule-card {
     position: relative;
-    background-color: #0f0f13;
-    border: 1.5px solid rgba(255, 255, 255, 0.16);
-    box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.22) inset,
-      0 -1px 0 0 rgba(0, 0, 0, 0.95) inset,
-      inset 0 0 8px rgba(0, 0, 0, 0.6);
+    background-color: #0d0d10;
+    border: none !important;
+    box-shadow: none !important;
   }
 
   /* Full Dashboard Elevated Panels & Cards */
