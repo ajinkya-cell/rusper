@@ -232,10 +232,10 @@ export default function App() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.12, ease: 'easeOut' }}
         style={{ borderRadius: isPushToTalk ? '9999px' : '16px' }}
-        className={`skeuo-capsule-card text-white relative overflow-hidden outline-none focus:outline-none transition-all duration-150 ${
+        className={`skeuo-capsule-card text-white relative overflow-hidden outline-none focus:outline-none border-0 shadow-none ${
           isPushToTalk
-            ? 'w-full h-full !rounded-full px-2 py-0.5 flex flex-row items-center justify-center'
-            : 'w-full h-full p-3.5 rounded-2xl flex flex-col justify-between'
+            ? 'w-full h-full !rounded-full p-0 m-0 flex flex-row items-center justify-center'
+            : 'w-full h-full p-3.5 rounded-2xl flex flex-col justify-between transition-all duration-150'
         }`}
       >
 
@@ -243,7 +243,7 @@ export default function App() {
         {!isPushToTalk && (
           <div className="flex items-center justify-between text-zinc-400 shrink-0 pb-1 border-b border-white/5">
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Rusper" className="w-5 h-5 rounded-md object-contain shadow-sm border border-white/10" />
+              <img src="/logo.png" alt="Rusper" className="w-5 h-5 rounded-md object-contain border border-white/10" />
               <span className="font-display italic text-2xl text-white font-normal tracking-wide">
                 Rusper
               </span>
@@ -262,14 +262,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Toast Notification Banner */}
+        {/* Toast Notification Banner (hidden in push-to-talk mode to keep the pill clean) */}
         <AnimatePresence>
-          {toast && (
+          {toast && !isPushToTalk && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className={`p-2 rounded-xl text-[11px] font-ui font-medium flex items-center justify-between shadow-lg border ${
+              className={`p-2 rounded-xl text-[11px] font-ui font-medium flex items-center justify-between border ${
                 toast.type === 'warning'
                   ? 'bg-amber-950/95 border-amber-600/70 text-amber-200'
                   : toast.type === 'success'
@@ -314,7 +314,7 @@ export default function App() {
                   <button
                     onClick={handleStopRecording}
                     title="Done & Transcribe (Enter)"
-                    className="skeuo-raised-btn text-xs font-ui font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer select-none text-zinc-950 shrink-0 shadow-md"
+                    className="skeuo-raised-btn text-xs font-ui font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer select-none text-zinc-950 shrink-0"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"></polyline>
@@ -335,7 +335,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               className={`flex items-center justify-center gap-2.5 overflow-hidden ${
-                isPushToTalk ? 'flex-1 h-9 rounded-full px-2' : 'h-14 rounded-xl px-4 my-auto'
+                isPushToTalk ? 'flex-1 h-full rounded-full p-0' : 'h-14 rounded-xl px-4 my-auto'
               }`}
             >
               <div className="relative w-4 h-4 flex items-center justify-center shrink-0">

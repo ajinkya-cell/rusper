@@ -83,29 +83,14 @@ export default function AudioReactiveWaveform({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const isVoiceActive = volume > 0.05;
-
   return (
-    <div className={`relative flex items-center justify-center ${compact ? 'h-9 w-full px-2' : 'h-14 px-2 gap-3'}`}>
-      {/* Voice-Activated Ambient Glow Bloom */}
-      <div
-        className="absolute inset-0 pointer-events-none rounded-full transition-opacity duration-150 ease-out"
-        style={{
-          background: isVoiceActive
-            ? 'radial-gradient(ellipse at center, rgba(255, 255, 255, 0.22) 0%, rgba(56, 189, 248, 0.14) 45%, transparent 75%)'
-            : 'radial-gradient(ellipse at center, rgba(255, 255, 255, 0.06) 0%, transparent 60%)',
-          filter: `blur(${compact ? '6px' : '14px'})`,
-          transform: `scale(${1 + volume * 0.35})`,
-          opacity: 0.35 + volume * 0.65,
-        }}
-      />
-
+    <div className={`relative flex items-center justify-center overflow-hidden w-full h-full ${compact ? 'p-0' : 'px-2 gap-3'}`}>
       {/* Optional Live Recording Status Dot & Timer */}
       {showTimer && (
         <div className="flex items-center gap-1.5 shrink-0 z-10 select-none pr-1">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)]"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
           </span>
           <span className="font-code text-xs font-semibold tracking-wider text-white/90">
             {formatTime(durationSeconds)}
@@ -114,7 +99,7 @@ export default function AudioReactiveWaveform({
       )}
 
       {/* Reactive Bars Array */}
-      <div className={`flex items-center justify-center gap-[3.5px] z-10 ${compact ? 'h-8' : 'h-12'}`}>
+      <div className={`flex items-center justify-center gap-[3px] z-10 w-full h-full`}>
         {barHeights.map((heightNorm, i) => {
           const maxHeight = compact ? 22 : 38;
           const minHeight = compact ? 4 : 8;
@@ -123,15 +108,10 @@ export default function AudioReactiveWaveform({
           return (
             <motion.div
               key={i}
-              className="block shrink-0 rounded-full w-[3.5px] transition-[height,background,box-shadow] duration-75"
+              className="block shrink-0 rounded-full w-[3.5px]"
               style={{
                 height: `${barHeightPx}px`,
-                background: isVoiceActive
-                  ? 'linear-gradient(180deg, #ffffff 0%, #f1f5f9 50%, #cbd5e1 100%)'
-                  : 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(203,213,225,0.65) 100%)',
-                boxShadow: isVoiceActive
-                  ? '0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(56, 189, 248, 0.4)'
-                  : '0 0 3px rgba(255, 255, 255, 0.35)',
+                background: '#ffffff',
               }}
             />
           );
