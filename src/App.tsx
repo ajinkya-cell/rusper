@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './Dashboard';
 import AudioReactiveWaveform from './components/AudioReactiveWaveform';
+import { openExternalUrl } from './utils/opener';
 
 export default function App() {
   const isDashboard = window.location.hash.includes('dashboard');
@@ -400,14 +401,14 @@ export default function App() {
             >
               <div className="flex items-center justify-between">
                 <label className="font-ui text-xs font-medium text-zinc-200">Groq API Key</label>
-                <a
-                  href="https://console.groq.com/keys"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-ui text-[11px] text-zinc-400 hover:text-white underline"
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl('https://console.groq.com/keys')}
+                  className="font-ui text-[11px] text-zinc-400 hover:text-white underline cursor-pointer transition flex items-center gap-1"
+                  title="Open Groq Console in your default browser to generate a free API key"
                 >
-                  Get Key ↗
-                </a>
+                  Create / Get Key ↗
+                </button>
               </div>
 
               <div className="relative flex items-center">

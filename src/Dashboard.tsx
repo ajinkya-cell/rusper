@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
+import { openExternalUrl } from './utils/opener';
 
 type Tab = 'api' | 'audio' | 'mode' | 'hotkeys' | 'prompts' | 'article';
 
@@ -327,7 +328,14 @@ export default function Dashboard() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <label className="font-ui text-xs font-semibold text-zinc-300">Groq API Key</label>
-                      <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="font-ui text-xs text-zinc-400 hover:text-white underline">Create API Key on Groq ↗</a>
+                      <button
+                        type="button"
+                        onClick={() => openExternalUrl('https://console.groq.com/keys')}
+                        className="font-ui text-xs text-zinc-400 hover:text-white underline cursor-pointer transition flex items-center gap-1"
+                        title="Open Groq Console in your default browser to generate a free API key"
+                      >
+                        Create API Key on Groq ↗
+                      </button>
                     </div>
                     <div className="flex gap-3">
                       <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="gsk_..." className="skeuo-sub-well flex-1 rounded-xl px-4 py-2.5 text-xs text-white font-code placeholder-zinc-600 focus:outline-none transition" />

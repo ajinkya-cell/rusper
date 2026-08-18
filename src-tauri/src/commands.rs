@@ -143,10 +143,27 @@ pub async fn register_hotkey(
         .ok_or_else(|| "No hotkey combination provided".to_string())?;
     let shortcut_obj = parse_shortcut_str(&key_str)
         .ok_or_else(|| format!("Invalid shortcut combination: '{}'", key_str))?;
+
+    // 1. Unregister previously saved hotkey if any
+    let prev_key_str = get_saved_hotkey_str();
+    if let Some(prev_shortcut) = parse_shortcut_str(&prev_key_str) {
+        let _ = app.global_shortcut().unregister(prev_shortcut);
+    }
+
+    // 2. Unregister target shortcut if already tracked, and unregister all
+    let _ = app.global_shortcut().unregister(shortcut_obj);
     let _ = app.global_shortcut().unregister_all();
-    app.global_shortcut()
-        .register(shortcut_obj)
-        .map_err(|e| format!("Failed to register OS hotkey '{}': {}", key_str, e))?;
+
+    // 3. Register target shortcut if not already registered
+    if !app.global_shortcut().is_registered(shortcut_obj) {
+        if let Err(e) = app.global_shortcut().register(shortcut_obj) {
+            let err_msg = e.to_string();
+            if !err_msg.to_lowercase().contains("already registered") {
+                return Err(format!("Failed to register OS hotkey '{}': {}", key_str, err_msg));
+            }
+        }
+    }
+
     save_hotkey_str(&key_str);
     Ok(())
 }
@@ -556,3 +573,32 @@ pub async fn undo_last_injection() -> Result<(), String> {
         Ok(())
     }).await.map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "", &url])
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+        Ok(())
+    }
+}
+

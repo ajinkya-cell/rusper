@@ -104,6 +104,7 @@ pub fn run() {
     std::env::set_var("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "0");
     tauri::Builder::default()
         .manage(AppState::default())
+        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -255,7 +256,8 @@ pub fn run() {
             set_selected_audio_device,
             start_mic_test,
             stop_mic_test,
-            sync_window_size
+            sync_window_size,
+            open_external_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
