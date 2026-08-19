@@ -39,6 +39,40 @@ struct ChatCompletionResponse {
     choices: Vec<ChatChoice>,
 }
 
+fn sanitize_refined_text(raw: &str) -> String {
+    let mut text = raw.trim().to_string();
+
+    // 1. If reasoning tags exist (<think>...</think>), strip them out
+    if text.contains("<think>") {
+        if let Some(end_idx) = text.find("</think>") {
+            let after = &text[end_idx + 8..];
+            text = after.trim().to_string();
+        }
+    }
+
+    // 2. Normalize unicode whitespace and non-breaking spaces
+    text = text
+        .replace('\u{00A0}', " ")
+        .replace('\u{202F}', " ")
+        .replace('\u{2007}', " ")
+        .replace('\u{FEFF}', "");
+
+    // 3. Trim leading and trailing quotes if the model wrapped output in quotes
+    let cleaned = text
+        .trim_matches(|c: char| c == '"' || c == '\'' || c == '`')
+        .trim()
+        .to_string();
+
+    cleaned
+}
+
+const FALLBACK_MODELS: &[&str] = &[
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "groq/compound-mini",
+    "qwen/qwen3.6-27b",
+];
+
 pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: Option<&str>) -> Result<String> {
     let client = Client::new();
     let file = File::open(&file_path)
@@ -50,18 +84,11 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: 
         .file_name("recording.wav")
         .mime_str("audio/wav")?;
 
-    let mut form = Form::new()
+    let form = Form::new()
         .part("file", file_part)
         .text("model", "whisper-large-v3-turbo")
         .text("response_format", "json")
         .text("language", "en");
-
-    if let Some(prompt) = system_prompt {
-        if !prompt.trim().is_empty() {
-            let truncated_prompt = prompt.chars().take(200).collect::<String>();
-            form = form.text("prompt", truncated_prompt);
-        }
-    }
 
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
@@ -83,7 +110,7 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: 
 
     let raw_text = result.text.trim().to_string();
 
-    // If an in-depth system prompt is active, run ultra-fast LLM post-processing for deep self-correction resolution
+    // If an in-depth system prompt is active, run ultra-fast LLM post-processing for self-correction & emotion extraction
     if let Some(prompt) = system_prompt {
         let trimmed_prompt = prompt.trim();
         if !trimmed_prompt.is_empty() && !raw_text.is_empty() {
@@ -107,35 +134,51 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: 
                 raw_text
             );
 
-            let chat_req = ChatCompletionRequest {
-                model: "llama-3.3-70b-versatile",
-                messages: vec![
-                    ChatMessage { role: "system", content: &meta_system_instruction },
-                    ChatMessage { role: "user", content: &user_content },
-                ],
-                temperature: 0.1,
-            };
+            let mut refined_text: Option<String> = None;
 
-            let chat_resp = client
-                .post("https://api.groq.com/openai/v1/chat/completions")
-                .bearer_auth(api_key)
-                .json(&chat_req)
-                .send()
-                .await;
+            for model_name in FALLBACK_MODELS {
+                let chat_req = ChatCompletionRequest {
+                    model: model_name,
+                    messages: vec![
+                        ChatMessage { role: "system", content: &meta_system_instruction },
+                        ChatMessage { role: "user", content: &user_content },
+                    ],
+                    temperature: 0.1,
+                };
 
-            if let Ok(res) = chat_resp {
-                if res.status().is_success() {
-                    if let Ok(chat_result) = res.json::<ChatCompletionResponse>().await {
-                        if let Some(first_choice) = chat_result.choices.into_iter().next() {
-                            let refined = first_choice.message.content.trim().to_string();
-                            // Sanitize any remaining leading/trailing quotes if present
-                            let unquoted = refined.trim_matches('"').trim_matches('\'').trim().to_string();
-                            if !unquoted.is_empty() {
-                                return Ok(unquoted);
+                let chat_resp = client
+                    .post("https://api.groq.com/openai/v1/chat/completions")
+                    .bearer_auth(api_key)
+                    .json(&chat_req)
+                    .send()
+                    .await;
+
+                match chat_resp {
+                    Ok(res) => {
+                        if res.status().is_success() {
+                            if let Ok(chat_result) = res.json::<ChatCompletionResponse>().await {
+                                if let Some(first_choice) = chat_result.choices.into_iter().next() {
+                                    let candidate = sanitize_refined_text(&first_choice.message.content);
+                                    if !candidate.is_empty() {
+                                        refined_text = Some(candidate);
+                                        break;
+                                    }
+                                }
                             }
+                        } else {
+                            let status = res.status();
+                            let err_body = res.text().await.unwrap_or_default();
+                            eprintln!("Groq LLM model '{}' error {}: {}", model_name, status, err_body);
                         }
                     }
+                    Err(err) => {
+                        eprintln!("Groq LLM request error for model '{}': {:?}", model_name, err);
+                    }
                 }
+            }
+
+            if let Some(final_text) = refined_text {
+                return Ok(final_text);
             }
         }
     }
