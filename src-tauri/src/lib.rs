@@ -257,7 +257,8 @@ pub fn run() {
             start_mic_test,
             stop_mic_test,
             sync_window_size,
-            open_external_url
+            open_external_url,
+            test_prompt_expansion
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

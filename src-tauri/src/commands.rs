@@ -610,3 +610,27 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+pub async fn test_prompt_expansion(
+    input: String,
+    prompt: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let api_key = {
+        let memory_key = state.custom_api_key.lock().ok().and_then(|g| g.clone()).and_then(|k| sanitize_key(&k));
+        memory_key.or_else(get_saved_api_key).ok_or_else(|| {
+            "Groq API key not found. Please save a valid API key in settings.".to_string()
+        })?
+    };
+
+    let sys_prompt = prompt.unwrap_or_else(|| {
+        let memory = state.system_prompt.lock().ok().and_then(|g| if g.trim().is_empty() { None } else { Some(g.clone()) });
+        memory.unwrap_or_else(get_saved_system_prompt_str)
+    });
+
+    crate::groq::refine_text_with_llm(&input, &api_key, &sys_prompt)
+        .await
+        .map_err(|e| format!("Prompt expansion test failed: {:#}", e))
+}
+
+

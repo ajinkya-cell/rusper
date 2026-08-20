@@ -62,18 +62,34 @@ Output: Hi Team,\n\nQuick update: we have completed the API endpoints. We are sc
   {
     id: 'developer',
     name: '💻 Developer & Technical Specification',
-    desc: 'Preserves code syntax, technical terms (camelCase, JSON, PostgreSQL), and structures PR notes & specs.',
-    prompt: `You are a senior software engineer editor for voice dictation. Format spoken technical notes, commit messages, PR descriptions, and architectural thoughts into clean developer documentation.
+    desc: 'Preserves code syntax, technical terms (camelCase, JSON, PostgreSQL), and auto-detects spoken length commands ("make it 50 words", "enhance this prompt to more words").',
+    prompt: `You are a senior software engineering writing and prompt engineering assistant. Your mission is to format spoken technical notes, commit messages, PR descriptions, architectural thoughts, and AI prompts into clean, robust developer specifications.
 
-DIRECTIVES:
-1. Resolve self-corrections ('let's use Postgres... wait no, Redis' -> 'Let's use Redis').
-2. Preserve technical terms, API endpoints, variable names, and code syntax accurately (e.g., camelCase, snake_case, JSON, OAuth2, Docker, async/await).
-3. Format code snippets or inline references in markdown backticks where appropriate.
-4. Output crisp, technical, structured prose without filler words.
+CORE DIRECTIVES:
+1. RESOLVE SELF-CORRECTIONS & CODE TERMS:
+   - Resolve backtracking cleanly ("let's use Postgres... wait no, Redis" -> "Let's use Redis").
+   - Preserve technical terms, API endpoints, variable names, and code syntax accurately (camelCase, snake_case, JSON, OAuth2, Docker, async/await).
+   - Wrap code variables, signatures, and file names in markdown backticks (\`foo\`).
+
+2. DYNAMIC SPOKEN LENGTH & PROMPT EXPANSION:
+   - Detect spoken length or expansion directives such as:
+     * "make it [N] words", "expand to [N] words", "target [N] words", "[N] word prompt"
+     * "enhance this prompt to more words", "elaborate on this prompt", "make this prompt more detailed"
+     * "condense this prompt", "shorten to [N] words"
+   - When a length/expansion command is detected:
+     a) Strip out the literal command trigger (do NOT write "make it 50 words" in the output).
+     b) Extract the core technical concept or prompt goal.
+     c) Dynamically expand the seed thought into a comprehensive, high-quality developer prompt or technical specification matching the requested length (~N words), incorporating inputs/outputs, edge case considerations, architectural constraints, and structure.
+
+3. OUTPUT CONSTRAINT:
+   - Output ONLY the final polished, expanded developer prompt or documentation text. Never include conversational preambles, explanations, quotes, or markdown code block fences around the whole response.
 
 EXAMPLES:
-Input: "add a new field user_id in the json response and use async await"
-Output: Add a new field \`user_id\` in the JSON response and use \`async/await\`.`,
+Input: "create a fast api endpoint for uploading images make it 50 words"
+Output: Create a FastAPI endpoint \`/upload/image\` that accepts multipart image files (\`PNG\`, \`JPEG\`, \`WebP\`) with a 10MB size limit. Validate MIME types, generate unique UUID filenames, stream chunks asynchronously to local storage or an S3 bucket, and return a JSON payload with the file URL and upload timestamp.
+
+Input: "build a custom react hook for debounce enhance this prompt to more words"
+Output: Develop a TypeScript custom React hook named \`useDebounce<T>\` that takes a generic value and a delay in milliseconds. Use \`useEffect\` and \`setTimeout\` to delay updating the debounced state until the timer completes. Ensure proper cleanup on unmount or value change to prevent memory leaks, and include unit test examples with Vitest.`,
   },
   {
     id: 'summary',
@@ -269,19 +285,26 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="w-screen h-screen bg-[#07070a] text-white flex flex-col select-none overflow-hidden font-ui">
-      <header className="px-8 pt-5 pb-3 flex items-center justify-between shrink-0 border-b border-white/[0.08] bg-[#0c0c0f]">
+    <div className="w-screen h-screen bg-[#070709] text-white flex flex-col select-none overflow-hidden font-ui p-6 gap-4">
+      {/* Top Branding Header (Directly on canvas with zero boxed section) */}
+      <div className="flex items-center justify-between shrink-0 px-1 pt-0.5">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Rusper Logo" className="w-8 h-8 rounded-xl object-contain shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" />
-          <h1 className="font-display italic text-3xl font-normal tracking-wide text-white">
+          <img
+            src="/logo.png"
+            alt="Rusper Logo"
+            className="w-7 h-7 rounded-xl object-contain shadow-[0_2px_12px_rgba(0,0,0,0.6)] border border-white/10"
+          />
+          <h1 className="font-display italic text-3xl font-normal tracking-wide text-white leading-none">
             Rusper
           </h1>
         </div>
-      </header>
+      </div>
 
-      <div className="flex flex-1 overflow-hidden p-6 gap-6 pt-4">
+      {/* Main Workspace Layout */}
+      <div className="flex flex-1 overflow-hidden gap-5">
+        {/* Left Sidebar */}
         <aside className="w-64 flex flex-col gap-4 shrink-0">
-          <nav className="skeuo-inner-socket rounded-2xl p-2 flex flex-col gap-1.5 border border-white/[0.06]">
+          <nav className="skeuo-dashboard-card rounded-2xl p-2.5 flex flex-col gap-1.5 border border-white/[0.08]">
             {navTabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -305,19 +328,20 @@ export default function Dashboard() {
               );
             })}
           </nav>
-          <div className="skeuo-dashboard-card rounded-2xl p-4 flex flex-col gap-2 mt-auto">
+          <div className="skeuo-dashboard-card rounded-2xl p-4 flex flex-col gap-2 mt-auto border border-white/[0.08]">
             <div className="flex items-center justify-between">
               <span className="font-ui text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Active Trigger</span>
               <span className="font-code text-[10px] text-zinc-400">{dictationMode === 'interactive' ? 'Interactive' : 'Push-to-Talk'}</span>
             </div>
             <div className="flex items-center gap-1.5 font-code text-xs text-white">
-              <span className="skeuo-inner-socket px-3 py-1 rounded-lg text-xs font-bold text-zinc-100 border border-white/10">{selectedShortcut}</span>
+              <span className="skeuo-sub-panel px-3 py-1 rounded-lg text-xs font-bold text-zinc-100 border border-white/10">{selectedShortcut}</span>
             </div>
             <p className="font-ui text-[11px] text-zinc-400 leading-tight">Press anywhere in Windows to initiate voice dictation.</p>
           </div>
         </aside>
 
-        <main className="flex-1 skeuo-dashboard-card rounded-2xl overflow-hidden flex flex-col relative">
+        {/* Right Main Content Panel */}
+        <main className="flex-1 skeuo-dashboard-card rounded-2xl overflow-hidden flex flex-col relative border border-white/[0.08]">
           {/* Scrollable Viewport */}
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 relative scroll-smooth">
             <AnimatePresence mode="wait">
@@ -353,7 +377,7 @@ export default function Dashboard() {
                       <option value="whisper-large-v3">whisper-large-v3 (Maximum Accuracy • Multilingual)</option>
                     </select>
                   </div>
-                  <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-2 mt-2 border border-white/[0.04]">
+                  <div className="skeuo-sub-panel rounded-2xl p-4 flex flex-col gap-2 mt-2 border border-white/[0.06]">
                     <span className="font-ui text-xs font-semibold text-white flex items-center gap-1.5">⚡ Hardware Acceleration Overview</span>
                     <p className="font-ui text-[11px] text-zinc-400 leading-relaxed">Rusper uses Groq's Language Processing Units (LPUs) to execute Whisper Large v3 directly in the cloud at <strong>~216x real-time speed</strong>, eliminating CPU spikes and fan noise on your local machine.</p>
                   </div>
@@ -378,7 +402,7 @@ export default function Dashboard() {
                       {audioDevices.map((dev, idx) => <option key={idx} value={dev}>{dev}</option>)}
                     </select>
                   </div>
-                  <div className="skeuo-inner-socket rounded-2xl p-5 flex flex-col gap-4 border border-white/[0.04]">
+                  <div className="skeuo-sub-panel rounded-2xl p-5 flex flex-col gap-4 border border-white/[0.06]">
                     <div className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2">
                         <span className="font-ui font-semibold text-zinc-200">Live Audio Level Meter</span>
@@ -429,18 +453,18 @@ export default function Dashboard() {
                 {hotkeySaveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{hotkeySaveStatus}</div>}
                 <div className="flex flex-col gap-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => handleSetDictationMode('interactive')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'interactive' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                    <button onClick={() => handleSetDictationMode('interactive')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'interactive' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-sub-panel text-zinc-300 hover:text-white border-white/[0.06]'}`}>
                       {dictationMode === 'interactive' && (<svg className="w-5 h-5 text-zinc-950 absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" /></svg>)}
                       <span className="font-ui text-sm font-bold">Interactive Review Mode</span>
                       <p className={`font-ui text-xs leading-relaxed ${dictationMode === 'interactive' ? 'text-zinc-700' : 'text-zinc-400'}`}>Click hotkey once to record. Displays a floating card to review, redo, or edit before pasting.</p>
                     </button>
-                    <button onClick={() => handleSetDictationMode('push_to_talk')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'push_to_talk' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                    <button onClick={() => handleSetDictationMode('push_to_talk')} className={`relative p-5 rounded-2xl flex flex-col gap-2 transition cursor-pointer text-left border ${dictationMode === 'push_to_talk' ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-sub-panel text-zinc-300 hover:text-white border-white/[0.06]'}`}>
                       {dictationMode === 'push_to_talk' && (<svg className="w-5 h-5 text-zinc-950 absolute top-4 right-4" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 8.707a1 1 0 00-1.414-1.414L11 12.586l-1.707-1.707a1 1 0 00-1.414 1.414l2.414 2.414a1 1 0 001.414 0l4.707-4.707z" clipRule="evenodd" /></svg>)}
                       <span className="font-ui text-sm font-bold">Push-to-Talk Capsule</span>
                       <p className={`font-ui text-xs leading-relaxed ${dictationMode === 'push_to_talk' ? 'text-zinc-700' : 'text-zinc-400'}`}>Hold hotkey while speaking. Releasing key transcribes & auto-pastes directly into active app.</p>
                     </button>
                   </div>
-                  <div className="skeuo-inner-socket rounded-2xl border border-white/[0.04] overflow-hidden text-xs">
+                  <div className="skeuo-sub-panel rounded-2xl border border-white/[0.06] overflow-hidden text-xs">
                     <button type="button" onClick={() => setIsSafeguardsOpen(!isSafeguardsOpen)} className="w-full px-4 py-3 flex items-center justify-between font-ui font-semibold text-white cursor-pointer hover:bg-white/5 transition">
                       <span className="flex items-center gap-2"><span>🛡️</span> Built-in Smart Dictation Safeguards & Limits</span>
                       <span className="font-code text-xs text-zinc-400">{isSafeguardsOpen ? '▲ Hide' : '▼ View Details'}</span>
@@ -478,7 +502,7 @@ export default function Dashboard() {
                     {hotkeySaveStatus}
                   </div>
                 )}
-                <div className="skeuo-inner-socket rounded-2xl px-6 py-4 flex items-center justify-between border border-white/[0.06] bg-[#09090c]/80">
+                <div className="skeuo-sub-panel rounded-2xl px-6 py-4 flex items-center justify-between border border-white/[0.06] bg-[#09090c]/80">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-ui text-sm font-semibold text-white tracking-tight">
                       Active Global Key Trigger
@@ -501,7 +525,7 @@ export default function Dashboard() {
                     ))}
                   </div>
                 </div>
-                <div className="skeuo-inner-socket rounded-2xl p-4 flex flex-col gap-3 border border-white/[0.04]">
+                <div className="skeuo-sub-panel rounded-2xl p-4 flex flex-col gap-3 border border-white/[0.06]">
                   <label className="font-ui text-xs font-semibold text-zinc-300">Build Custom Shortcut</label>
                   <div className="flex items-center gap-3">
                     <select value={customModifier} onChange={(e) => setCustomModifier(e.target.value)} className="skeuo-sub-well rounded-xl px-3 py-2 text-xs text-white font-code cursor-pointer">
@@ -571,6 +595,8 @@ export default function Dashboard() {
                   <p className="font-ui text-xs text-zinc-400 mt-0.5">Choose from specialized editing personas or write your custom LLM instructions.</p>
                 </div>
                 {saveStatus && <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-2.5 rounded-xl font-medium font-ui">{saveStatus}</div>}
+                
+                {/* Persona Presets */}
                 <div className="flex flex-col gap-3">
                   <div className="flex justify-between items-center">
                     <label className="font-ui text-xs font-semibold text-zinc-300">Preset Personas</label>
@@ -581,7 +607,7 @@ export default function Dashboard() {
                       const isSelected = systemPrompt.trim() === preset.prompt.trim();
                       const isHovered = hoveredPresetId === preset.id;
                       return (
-                        <button key={preset.id} type="button" onMouseEnter={() => setHoveredPresetId(preset.id)} onMouseLeave={() => setHoveredPresetId(null)} onClick={() => handleApplySystemPromptPreset(preset.prompt)} className={`p-3.5 rounded-xl flex flex-col gap-1 transition cursor-pointer text-left border ${isSelected ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-inner-socket text-zinc-300 hover:text-white border-white/[0.04]'}`}>
+                        <button key={preset.id} type="button" onMouseEnter={() => setHoveredPresetId(preset.id)} onMouseLeave={() => setHoveredPresetId(null)} onClick={() => handleApplySystemPromptPreset(preset.prompt)} className={`p-3.5 rounded-xl flex flex-col gap-1 transition cursor-pointer text-left border ${isSelected ? 'bg-white text-zinc-950 border-white/50 shadow-md font-bold' : 'skeuo-sub-panel text-zinc-300 hover:text-white border-white/[0.06]'}`}>
                           <div className="flex items-center justify-between">
                             <span className="font-ui text-xs font-bold">{preset.name}</span>
                             {isSelected && <span className="text-[10px] bg-zinc-950 text-white px-2 py-0.5 rounded font-code font-semibold">ACTIVE</span>}
@@ -596,6 +622,50 @@ export default function Dashboard() {
                     })}
                   </div>
                 </div>
+
+                {/* Developer Mode Spoken Length & Prompt Expansion Showcase */}
+                <div className="skeuo-sub-panel rounded-2xl p-5 flex flex-col gap-3.5 border border-white/[0.06] bg-[#09090c]/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚡</span>
+                      <span className="font-ui text-xs font-bold text-white tracking-wide">Developer Mode: Spoken Length & Prompt Expansion</span>
+                    </div>
+                    <span className="text-[10px] font-code bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-semibold">AUTO-DETECT ACTIVE</span>
+                  </div>
+
+                  <p className="font-ui text-xs text-zinc-400 leading-relaxed">
+                    When using <strong>Developer Mode</strong>, you can speak natural length adjustments and prompt enhancement commands. The engine automatically strips the command phrase, extracts the technical seed thought, and enriches it with architectural requirements, input/output contracts, and code syntax to match your target length.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <div className="skeuo-sub-well p-3 rounded-xl border border-white/[0.04] flex flex-col gap-1">
+                      <span className="font-code text-[11px] text-zinc-200 font-semibold flex items-center gap-1.5">
+                        <span className="text-cyan-400 font-bold">🗣️</span> "make it 50 words"
+                      </span>
+                      <p className="font-ui text-[11px] text-zinc-400 leading-tight">Expands the spoken concept to approximately 50 words with technical details.</p>
+                    </div>
+                    <div className="skeuo-sub-well p-3 rounded-xl border border-white/[0.04] flex flex-col gap-1">
+                      <span className="font-code text-[11px] text-zinc-200 font-semibold flex items-center gap-1.5">
+                        <span className="text-purple-400 font-bold">🗣️</span> "enhance this prompt to more words"
+                      </span>
+                      <p className="font-ui text-[11px] text-zinc-400 leading-tight">Generates a comprehensive specification covering inputs, outputs, and edge cases.</p>
+                    </div>
+                    <div className="skeuo-sub-well p-3 rounded-xl border border-white/[0.04] flex flex-col gap-1">
+                      <span className="font-code text-[11px] text-zinc-200 font-semibold flex items-center gap-1.5">
+                        <span className="text-amber-400 font-bold">🗣️</span> "expand to 100 words"
+                      </span>
+                      <p className="font-ui text-[11px] text-zinc-400 leading-tight">Builds an in-depth multi-section prompt or PR description.</p>
+                    </div>
+                    <div className="skeuo-sub-well p-3 rounded-xl border border-white/[0.04] flex flex-col gap-1">
+                      <span className="font-code text-[11px] text-zinc-200 font-semibold flex items-center gap-1.5">
+                        <span className="text-emerald-400 font-bold">🗣️</span> "condense to 20 words"
+                      </span>
+                      <p className="font-ui text-[11px] text-zinc-400 leading-tight">Distills wordy thoughts into a punchy, minimal developer command.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Prompt Instructions */}
                 <div className="flex flex-col gap-2 mt-2">
                   <div className="flex justify-between items-center">
                     <label className="font-ui text-xs font-semibold text-zinc-300">Custom Prompt Instructions</label>
@@ -615,7 +685,7 @@ export default function Dashboard() {
                   <h2 className="font-display text-3xl font-normal text-white tracking-normal leading-snug">Why I Built Rusper</h2>
                   <p className="font-ui text-xs text-zinc-400 mt-1">A personal project built for speed, simplicity, and freedom.</p>
                 </div>
-                <div className="skeuo-inner-socket rounded-2xl p-6 flex flex-col gap-4 border border-white/[0.04] bg-[#09090c]/60">
+                <div className="skeuo-sub-panel rounded-2xl p-6 flex flex-col gap-4 border border-white/[0.06] bg-[#09090c]/60">
                   <article className="font-ui text-zinc-300 leading-relaxed flex flex-col gap-4 text-sm">
                     <p>
                       Recently, I saw an advertisement for tools like Whisper Flow and other voice dictation apps. The core concept felt magical: just talk, and your thoughts appear instantly on the screen without typing.
