@@ -114,8 +114,42 @@ pub fn run() {
                     };
 
                     if event.state() == ShortcutState::Pressed {
-                        // Guard against OS keyboard auto-repeat when holding down key in Push-to-Talk mode
+                        // Check if API key is configured
+                        let has_api_key = {
+                            let guard = state.custom_api_key.lock().ok().and_then(|g| g.clone());
+                            guard.or_else(commands::get_saved_api_key).is_some()
+                        };
+
+                        if !has_api_key {
+                            if let Some(dashboard_window) = app.get_webview_window("dashboard") {
+                                let _ = dashboard_window.show();
+                                let _ = dashboard_window.set_focus();
+                            }
+                            return;
+                        }
+
+                        // Save current foreground window handle before showing Rusper popup
+                        crate::injector::save_active_foreground_window();
+
+                        // If already recording:
                         if state.is_recording.load(Ordering::SeqCst) {
+                            if mode != "push_to_talk" {
+                                // Toggle-Stop: user pressed hotkey again to finish speaking
+                                let _ = app.emit("ui-state", "processing");
+                                let handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state = handle.state::<AppState>();
+                                    match stop_recording_and_process(state).await {
+                                        Ok(transcript) => {
+                                            let _ = handle.emit("transcription-result", transcript);
+                                        }
+                                        Err(e) => {
+                                            let _ = handle.emit("transcription-error", e);
+                                        }
+                                    }
+                                });
+                            }
+                            // In push_to_talk mode, ignore OS keyboard auto-repeat while key is held down
                             return;
                         }
 
@@ -129,9 +163,6 @@ pub fn run() {
                             let _ = window.show();
                             // Re-strip DWM frame border/shadow after the window becomes visible
                             commands::apply_pure_window_attributes(&window);
-                            if mode != "push_to_talk" {
-                                let _ = window.set_focus();
-                            }
                             let _ = app.emit("ui-state", "recording");
                             let handle = app.clone();
                             tauri::async_runtime::spawn(async move {
@@ -174,6 +205,13 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Load Saved API Key
+            if let Some(key) = commands::get_saved_api_key() {
+                if let Ok(mut guard) = app.state::<AppState>().custom_api_key.lock() {
+                    *guard = Some(key);
+                }
+            }
+
             // Load Saved Dictation Mode
             let saved_mode = commands::get_saved_mode_str();
             if let Ok(mut guard) = app.state::<AppState>().dictation_mode.lock() {

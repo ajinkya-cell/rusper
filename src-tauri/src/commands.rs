@@ -3,11 +3,34 @@ use crate::groq::transcribe_audio;
 use crate::injector::copy_and_inject_text;
 use crate::parse_shortcut_str;
 use crate::state::AppState;
+use std::path::PathBuf;
 use std::sync::{atomic::Ordering, Mutex};
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 static ACTIVE_RECORDER: Mutex<Option<AudioRecorder>> = Mutex::new(None);
+
+pub fn get_config_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(app_data) = std::env::var("APPDATA") {
+            let p = PathBuf::from(app_data).join("Rusper");
+            let _ = std::fs::create_dir_all(&p);
+            return p;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let p = PathBuf::from(home).join(".config").join("rusper");
+            let _ = std::fs::create_dir_all(&p);
+            return p;
+        }
+    }
+    let p = std::env::temp_dir().join("rusper");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
 
 fn sanitize_key(raw: &str) -> Option<String> {
     let cleaned = raw
@@ -23,9 +46,15 @@ fn sanitize_key(raw: &str) -> Option<String> {
     }
 }
 
-fn get_saved_api_key() -> Option<String> {
-    let key_file = std::env::temp_dir().join("flow_dictate_key.txt");
-    if let Ok(content) = std::fs::read_to_string(&key_file) {
+pub fn get_saved_api_key() -> Option<String> {
+    let config_file = get_config_dir().join("flow_dictate_key.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        if let Some(valid_key) = sanitize_key(&content) {
+            return Some(valid_key);
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_key.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         if let Some(valid_key) = sanitize_key(&content) {
             return Some(valid_key);
         }
@@ -34,8 +63,11 @@ fn get_saved_api_key() -> Option<String> {
 }
 
 fn save_api_key_to_disk(key: &str) -> Result<(), String> {
-    let key_file = std::env::temp_dir().join("flow_dictate_key.txt");
-    std::fs::write(&key_file, key).map_err(|e| e.to_string())
+    let config_file = get_config_dir().join("flow_dictate_key.txt");
+    let _ = std::fs::write(&config_file, key);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_key.txt");
+    let _ = std::fs::write(&legacy_file, key);
+    Ok(())
 }
 
 #[tauri::command]
@@ -70,8 +102,15 @@ pub async fn save_api_key(key: String, state: State<'_, AppState>) -> Result<(),
 }
 
 pub fn get_saved_hotkey_str() -> String {
-    let file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
-    if let Ok(content) = std::fs::read_to_string(&file) {
+    let config_file = get_config_dir().join("flow_dictate_hotkey.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         let trimmed = content.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -81,13 +120,22 @@ pub fn get_saved_hotkey_str() -> String {
 }
 
 pub fn save_hotkey_str(hotkey: &str) {
-    let file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
-    let _ = std::fs::write(&file, hotkey);
+    let config_file = get_config_dir().join("flow_dictate_hotkey.txt");
+    let _ = std::fs::write(&config_file, hotkey);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_hotkey.txt");
+    let _ = std::fs::write(&legacy_file, hotkey);
 }
 
 pub fn get_saved_mode_str() -> String {
-    let file = std::env::temp_dir().join("flow_dictate_mode.txt");
-    if let Ok(content) = std::fs::read_to_string(&file) {
+    let config_file = get_config_dir().join("flow_dictate_mode.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        let trimmed = content.trim();
+        if trimmed == "push_to_talk" || trimmed == "interactive" {
+            return trimmed.to_string();
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_mode.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         let trimmed = content.trim();
         if trimmed == "push_to_talk" || trimmed == "interactive" {
             return trimmed.to_string();
@@ -97,8 +145,10 @@ pub fn get_saved_mode_str() -> String {
 }
 
 pub fn save_mode_str(mode: &str) {
-    let file = std::env::temp_dir().join("flow_dictate_mode.txt");
-    let _ = std::fs::write(&file, mode);
+    let config_file = get_config_dir().join("flow_dictate_mode.txt");
+    let _ = std::fs::write(&config_file, mode);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_mode.txt");
+    let _ = std::fs::write(&legacy_file, mode);
 }
 
 #[tauri::command]
@@ -169,8 +219,15 @@ pub async fn register_hotkey(
 }
 
 pub fn get_saved_overlay_position_str() -> String {
-    let file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
-    if let Ok(content) = std::fs::read_to_string(&file) {
+    let config_file = get_config_dir().join("flow_dictate_overlay_pos.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         let trimmed = content.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -180,8 +237,10 @@ pub fn get_saved_overlay_position_str() -> String {
 }
 
 pub fn save_overlay_position_str(pos: &str) {
-    let file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
-    let _ = std::fs::write(&file, pos);
+    let config_file = get_config_dir().join("flow_dictate_overlay_pos.txt");
+    let _ = std::fs::write(&config_file, pos);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_overlay_pos.txt");
+    let _ = std::fs::write(&legacy_file, pos);
 }
 
 pub fn compute_window_position(
@@ -226,8 +285,15 @@ pub async fn get_overlay_position() -> Result<String, String> {
 }
 
 pub fn get_saved_device_str() -> Option<String> {
-    let file = std::env::temp_dir().join("flow_dictate_device.txt");
-    if let Ok(content) = std::fs::read_to_string(&file) {
+    let config_file = get_config_dir().join("flow_dictate_device.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_device.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         let trimmed = content.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
@@ -237,8 +303,10 @@ pub fn get_saved_device_str() -> Option<String> {
 }
 
 pub fn save_device_str(device: &str) {
-    let file = std::env::temp_dir().join("flow_dictate_device.txt");
-    let _ = std::fs::write(&file, device);
+    let config_file = get_config_dir().join("flow_dictate_device.txt");
+    let _ = std::fs::write(&config_file, device);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_device.txt");
+    let _ = std::fs::write(&legacy_file, device);
 }
 
 #[tauri::command]
@@ -306,8 +374,15 @@ pub async fn start_recording(app_handle: AppHandle, state: State<'_, AppState>) 
 }
 
 pub fn get_saved_system_prompt_str() -> String {
-    let file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
-    if let Ok(content) = std::fs::read_to_string(&file) {
+    let config_file = get_config_dir().join("flow_dictate_system_prompt.txt");
+    if let Ok(content) = std::fs::read_to_string(&config_file) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let legacy_file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
+    if let Ok(content) = std::fs::read_to_string(&legacy_file) {
         let trimmed = content.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -325,8 +400,10 @@ pub fn get_saved_system_prompt_str() -> String {
 }
 
 pub fn save_system_prompt_str(prompt: &str) {
-    let file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
-    let _ = std::fs::write(&file, prompt);
+    let config_file = get_config_dir().join("flow_dictate_system_prompt.txt");
+    let _ = std::fs::write(&config_file, prompt);
+    let legacy_file = std::env::temp_dir().join("flow_dictate_system_prompt.txt");
+    let _ = std::fs::write(&legacy_file, prompt);
 }
 
 pub fn apply_pure_window_attributes(window: &tauri::WebviewWindow) {
@@ -566,18 +643,25 @@ pub async fn validate_active_text_field() -> Result<bool, String> {
 #[tauri::command]
 pub async fn undo_last_injection() -> Result<(), String> {
     tokio::task::spawn_blocking(|| -> Result<(), String> {
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("Enigo init error: {:?}", e))?;
-        
-        #[cfg(target_os = "macos")]
-        let modifier = Key::Meta;
-        #[cfg(not(target_os = "macos"))]
-        let modifier = Key::Control;
+        #[cfg(target_os = "windows")]
+        {
+            crate::injector::restore_active_foreground_window();
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            crate::injector::simulate_undo()?;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+            let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("Enigo init error: {:?}", e))?;
+            #[cfg(target_os = "macos")]
+            let modifier = Key::Meta;
+            #[cfg(not(target_os = "macos"))]
+            let modifier = Key::Control;
 
-        let _ = enigo.key(modifier, Direction::Press);
-        let _ = enigo.key(Key::Unicode('z'), Direction::Click);
-        let _ = enigo.key(modifier, Direction::Release);
-
+            let _ = enigo.key(modifier, Direction::Press);
+            let _ = enigo.key(Key::Z, Direction::Click);
+            let _ = enigo.key(modifier, Direction::Release);
+        }
         Ok(())
     }).await.map_err(|e| e.to_string())?
 }

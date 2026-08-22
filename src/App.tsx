@@ -98,7 +98,7 @@ export default function App() {
     };
   }, [viewState]);
 
-  // Listen for backend UI state, silence timeout, and max recording duration events
+  // Listen for backend UI state, silence timeout, max recording duration, and transcription events
   useEffect(() => {
     const unlistenUI = listen<string>('ui-state', (event) => {
       if (event.payload === 'recording') {
@@ -114,7 +114,25 @@ export default function App() {
           .catch(() => {});
       } else if (event.payload === 'processing') {
         setViewState('processing');
+      } else if (event.payload === 'settings') {
+        setViewState('settings');
       }
+    });
+
+    const unlistenTranscript = listen<string>('transcription-result', (event) => {
+      const clean = event.payload ? event.payload.trim() : '';
+      if (!clean || clean === '(No audio detected)' || clean === '(No speech detected)') {
+        setResultText('(No audio detected)');
+        showToast('🔇 No audio detected. Left input field blank.', 'warning');
+      } else {
+        setResultText(clean);
+      }
+      setViewState('review');
+    });
+
+    const unlistenTranscriptError = listen<string>('transcription-error', (event) => {
+      setResultText(`Error: ${event.payload}`);
+      setViewState('review');
     });
 
     const unlistenSilence = listen('silence-timeout', () => {
@@ -128,6 +146,8 @@ export default function App() {
 
     return () => {
       unlistenUI.then((fn) => fn());
+      unlistenTranscript.then((fn) => fn());
+      unlistenTranscriptError.then((fn) => fn());
       unlistenSilence.then((fn) => fn());
       unlistenMaxDuration.then((fn) => fn());
     };
