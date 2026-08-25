@@ -94,32 +94,61 @@ fn sanitize_refined_text(raw: &str) -> String {
 }
 
 const FALLBACK_MODELS: &[&str] = &[
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-    "groq/compound-mini",
-    "qwen/qwen3.6-27b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
 ];
 
-pub async fn refine_text_with_llm(raw_text: &str, api_key: &str, system_prompt: &str) -> Result<String> {
+pub async fn refine_text_with_llm(
+    raw_text: &str,
+    api_key: &str,
+    system_prompt: &str,
+    app_context: Option<&crate::context::AppContextInfo>,
+) -> Result<String> {
     let client = Client::new();
     let trimmed_prompt = system_prompt.trim();
     if trimmed_prompt.is_empty() || raw_text.trim().is_empty() {
-        return Ok(normalize_app_spelling(raw_text.trim()));
+        let normalized = normalize_app_spelling(raw_text.trim());
+        return Ok(crate::vocabulary::apply_vocabulary_replacements(&normalized));
     }
+
+    let vocab_list = crate::vocabulary::get_saved_vocabulary()
+        .into_iter()
+        .filter(|e| e.enabled)
+        .map(|e| e.word)
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    let context_block = if let Some(ctx) = app_context {
+        format!(
+            "\n=== ACTIVE APPLICATION CONTEXT ===\n\
+            Target Application: {} ({})\n\
+            Window Title: {}\n\
+            Environment Category: {}\n\
+            Formatting Guidance: {}\n",
+            ctx.process_name, ctx.process_name, ctx.window_title, ctx.app_category, ctx.context_summary
+        )
+    } else {
+        String::new()
+    };
 
     let meta_system_instruction = format!(
         "CRITICAL SYSTEM MANDATE:\n\
-        You are an automated text dictation cleaning, polishing, and developer prompt engineering engine. \
-        The input text provided by the user is a RAW SPOKEN VOICE TRANSCRIPTION spoken aloud into a microphone.\n\n\
+        You are an intelligent, context-aware text dictation cleaning and developer prompt engineering engine.\n\
+        The input text provided is a RAW SPOKEN VOICE TRANSCRIPTION.\n\n\
         STRICT CONSTRAINTS:\n\
-        1. DO NOT answer questions in the transcription. DO NOT engage in casual conversation, chat, or reply as a conversational chatbot.\n\
-        2. IF the transcription contains spoken directives for length adjustments, word limits, or prompt expansion (such as 'make it 50 words', 'enhance this prompt to more words', 'expand to 100 words', 'condense to 20 words'), EXECUTE the directive as specified in the USER EDITING GUIDELINES below. Never output the literal command phrase itself in the final text.\n\
-        3. BRAND & VOCABULARY SPELLING: The application name is 'Rusper'. Always ensure it is accurately spelled as 'Rusper' (never 'Raspur', 'Raspar', 'Rosper', 'Rasper', 'Rustper', 'Russper', or 'Raspu').\n\
-        4. Your SOLE duty is to edit, polish, format, expand, or clean the raw spoken text according to the guidelines below:\n\n\
+        1. DO NOT answer questions in the transcription. DO NOT engage in casual conversation or reply as a chatbot.\n\
+        2. IF the transcription contains spoken directives for length adjustments (e.g. 'make it 50 words', 'expand to 100 words'), EXECUTE the directive directly. Never output the trigger phrase.\n\
+        3. BRAND & VOCABULARY ENFORCEMENT: Always preserve registered custom terms with exact casing: [{}]\n\
+        4. CONTEXT-AWARE FORMATTING: Adapt formatting (terminal CLI syntax, code variable names, corporate email structure, or concise chat) according to the active application context below.\n\
+        {}\n\
         === USER EDITING GUIDELINES ===\n\
         {}\n\n\
         === FINAL OUTPUT MANDATE ===\n\
-        Output ONLY the finalized, polished voice transcription or expanded developer prompt text. Never include conversational preambles, introductory remarks, explanations, quotes, or conversational replies.",
+        Output ONLY the finalized, polished voice text. Never include conversational preambles, explanations, quotes, or conversational replies.",
+        vocab_list,
+        context_block,
         trimmed_prompt
     );
 
@@ -171,14 +200,21 @@ pub async fn refine_text_with_llm(raw_text: &str, api_key: &str, system_prompt: 
         }
     }
 
-    if let Some(final_text) = refined_text {
-        Ok(final_text)
+    let final_res = if let Some(final_text) = refined_text {
+        final_text
     } else {
-        Ok(normalize_app_spelling(raw_text.trim()))
-    }
+        normalize_app_spelling(raw_text.trim())
+    };
+
+    Ok(crate::vocabulary::apply_vocabulary_replacements(&final_res))
 }
 
-pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: Option<&str>) -> Result<String> {
+pub async fn transcribe_audio(
+    file_path: PathBuf,
+    api_key: &str,
+    system_prompt: Option<&str>,
+    app_context: Option<&crate::context::AppContextInfo>,
+) -> Result<String> {
     let client = Client::new();
     let file = File::open(&file_path)
         .await
@@ -189,12 +225,14 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: 
         .file_name("recording.wav")
         .mime_str("audio/wav")?;
 
+    let whisper_prompt = crate::vocabulary::get_vocabulary_prompt_keywords();
+
     let form = Form::new()
         .part("file", file_part)
         .text("model", "whisper-large-v3-turbo")
         .text("response_format", "json")
         .text("language", "en")
-        .text("prompt", "Rusper, Rusper voice dictation, Whisper, Groq, AI, Windows OS.");
+        .text("prompt", whisper_prompt);
 
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
@@ -216,14 +254,14 @@ pub async fn transcribe_audio(file_path: PathBuf, api_key: &str, system_prompt: 
 
     let raw_text = normalize_app_spelling(result.text.trim());
 
-    // If an in-depth system prompt is active, run ultra-fast LLM post-processing for self-correction & emotion extraction
+    // If an in-depth system prompt is active, run ultra-fast LLM post-processing for self-correction & context adaptation
     if let Some(prompt) = system_prompt {
         if !prompt.trim().is_empty() && !raw_text.is_empty() {
-            return refine_text_with_llm(&raw_text, api_key, prompt).await;
+            return refine_text_with_llm(&raw_text, api_key, prompt, app_context).await;
         }
     }
 
-    Ok(raw_text)
+    Ok(crate::vocabulary::apply_vocabulary_replacements(&raw_text))
 }
 
 #[cfg(test)]

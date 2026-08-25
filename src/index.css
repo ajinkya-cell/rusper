@@ -89,7 +89,7 @@ main:focus, main:focus-visible, body:focus, html:focus {
 }
 
 @layer utilities {
-  /* Floating Overlay Capsule Card */
+  /* Floating Overlay Capsule Card (Maintained for pop-up HUD compatibility) */
   .skeuo-capsule-card {
     position: relative;
     background-color: #0d0d10;
@@ -97,111 +97,111 @@ main:focus, main:focus-visible, body:focus, html:focus {
     box-shadow: none !important;
   }
 
-  /* Full Dashboard Elevated Panels & Cards */
-  .skeuo-dashboard-card, .skeuo-bevel-card {
-    position: relative;
-    background: linear-gradient(180deg, #131317 0%, #09090c 100%);
+  /* Apple Translucent Materials & Depth Hierarchy */
+  .apple-sidebar {
+    background: rgba(18, 18, 22, 0.7);
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
-      0 -1px 0 0 rgba(0, 0, 0, 0.7) inset,
-      0 20px 45px -12px rgba(0, 0, 0, 0.9),
-      0 6px 18px rgba(0, 0, 0, 0.6);
+      0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+      0 20px 40px -15px rgba(0, 0, 0, 0.7);
   }
 
-  /* Sleek Sub-Panels with Minimal Bevel */
-  .skeuo-sub-panel, .skeuo-inner-socket {
-    position: relative;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.065);
+  .apple-main-canvas {
+    background: rgba(13, 13, 16, 0.75);
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+      0 24px 48px -12px rgba(0, 0, 0, 0.8);
+  }
+
+  .apple-grouped-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     box-shadow:
       0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
-      0 2px 8px rgba(0, 0, 0, 0.4);
+      0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  .skeuo-sub-well {
-    background-color: #050507;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-shadow: inset 0 1.5px 3.5px rgba(0, 0, 0, 0.75);
+  .apple-sub-well {
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  /* Primary Tactile Action Button */
-  .skeuo-raised-btn, .skeuo-inject-btn {
-    position: relative;
-    background: linear-gradient(180deg, #ffffff 0%, #f4f5f7 45%, #d5d8de 100%);
-    color: #0d0d10;
-    border-top: 1.5px solid rgba(255, 255, 255, 0.95);
-    border-bottom: 2.5px solid rgba(0, 0, 0, 0.4);
-    border-left: 1px solid rgba(255, 255, 255, 0.4);
-    border-right: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow:
-      0 1.5px 0 0 rgba(255, 255, 255, 0.9) inset,
-      0 -1.5px 0 0 rgba(0, 0, 0, 0.2) inset,
-      0 4px 8px -1px rgba(0, 0, 0, 0.5),
-      0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: all 0.12s ease-out;
+  /* Apple Form Inputs */
+  .apple-input {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.15s ease-out;
   }
 
-  .skeuo-raised-btn:hover, .skeuo-inject-btn:hover {
-    background: linear-gradient(180deg, #ffffff 0%, #f9fafb 45%, #e0e3e8 100%);
-    box-shadow:
-      0 1.5px 0 0 rgba(255, 255, 255, 1) inset,
-      0 -1.5px 0 0 rgba(0, 0, 0, 0.2) inset,
-      0 6px 12px -2px rgba(0, 0, 0, 0.55),
-      0 2px 4px rgba(0, 0, 0, 0.35);
+  .apple-input:focus {
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.6);
   }
 
-  .skeuo-raised-btn:active, .skeuo-inject-btn:active {
-    transform: translateY(1.5px);
-    border-top: 1px solid rgba(0, 0, 0, 0.25);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow:
-      inset 0 2px 4px rgba(0, 0, 0, 0.35),
-      0 1px 2px rgba(0, 0, 0, 0.2);
+  /* Apple Primary & Secondary Buttons */
+  .apple-btn-primary {
+    background: #ffffff;
+    color: #09090b;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(255, 255, 255, 0.15);
+    transition: all 0.12s cubic-bezier(0.2, 0, 0, 1);
   }
 
-  /* Dark Tactile Button */
-  .skeuo-raised-btn-dark {
-    position: relative;
-    background: linear-gradient(180deg, #242429 0%, #17171a 100%);
+  .apple-btn-primary:hover {
+    background: #f4f4f5;
+  }
+
+  .apple-btn-primary:active {
+    transform: scale(0.975);
+    background: #e4e4e7;
+  }
+
+  .apple-btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
     color: #f4f4f5;
-    border-top: 1.5px solid rgba(255, 255, 255, 0.22);
-    border-bottom: 2.5px solid rgba(0, 0, 0, 0.65);
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.15) inset,
-      0 -1px 0 0 rgba(0, 0, 0, 0.4) inset,
-      0 4px 8px -1px rgba(0, 0, 0, 0.5),
-      0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: all 0.12s ease-out;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset;
+    transition: all 0.12s cubic-bezier(0.2, 0, 0, 1);
   }
 
-  .skeuo-raised-btn-dark:hover {
-    background: linear-gradient(180deg, #2f2f35 0%, #1e1e22 100%);
-    color: #ffffff;
-    border-top: 1.5px solid rgba(255, 255, 255, 0.35);
-    box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.22) inset,
-      0 -1px 0 0 rgba(0, 0, 0, 0.4) inset,
-      0 5px 10px -1px rgba(0, 0, 0, 0.6),
-      0 2px 4px rgba(0, 0, 0, 0.35);
+  .apple-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.14);
   }
 
-  .skeuo-raised-btn-dark:active {
-    transform: translateY(1.5px);
-    border-top: 1px solid rgba(0, 0, 0, 0.4);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow:
-      inset 0 2px 4px rgba(0, 0, 0, 0.6),
-      0 1px 2px rgba(0, 0, 0, 0.2);
+  .apple-btn-secondary:active {
+    transform: scale(0.975);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  /* Legacy fallback support */
+  .skeuo-dashboard-card, .skeuo-bevel-card {
+    background: rgba(18, 18, 22, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .skeuo-sub-panel, .skeuo-inner-socket {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .skeuo-sub-well {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .skeuo-raised-btn, .skeuo-inject-btn {
+    background: #ffffff;
+    color: #09090b;
   }
 }
 
-/* Custom Minimalist Scrollbars */
+/* Apple-style Minimal Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -214,5 +214,5 @@ main:focus, main:focus-visible, body:focus, html:focus {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.24);
 }
