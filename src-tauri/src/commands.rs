@@ -10,6 +10,10 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 static ACTIVE_RECORDER: Mutex<Option<AudioRecorder>> = Mutex::new(None);
 
+pub fn has_active_recorder() -> bool {
+    ACTIVE_RECORDER.lock().map(|g| g.is_some()).unwrap_or(false)
+}
+
 pub fn get_config_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -354,8 +358,13 @@ pub async fn stop_mic_test() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn start_recording(app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    if state.is_recording.load(Ordering::SeqCst) {
-        return Ok(());
+    {
+        let guard = ACTIVE_RECORDER
+            .lock()
+            .map_err(|_| "Failed to lock active recorder mutex".to_string())?;
+        if guard.is_some() {
+            return Ok(());
+        }
     }
 
     let dev_name = {
@@ -363,7 +372,14 @@ pub async fn start_recording(app_handle: AppHandle, state: State<'_, AppState>) 
         memory.or_else(get_saved_device_str)
     };
 
-    let (recorder, _) = AudioRecorder::new(app_handle, dev_name)?;
+    let (recorder, _) = match AudioRecorder::new(app_handle, dev_name) {
+        Ok(r) => r,
+        Err(e) => {
+            state.is_recording.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+
     let mut guard = ACTIVE_RECORDER
         .lock()
         .map_err(|_| "Failed to lock active recorder mutex".to_string())?;
@@ -565,14 +581,23 @@ pub async fn stop_recording_and_process(
         memory.unwrap_or_else(get_saved_system_prompt_str)
     };
 
-    let raw_transcript = transcribe_audio(audio_path, &api_key, Some(&sys_prompt))
-        .await
-        .map_err(|e| format!("Transcription failed: {:#}", e))?;
-
-    let final_transcript = if is_meaningful_speech(&raw_transcript) {
-        raw_transcript
+    let context_info = if state.context_aware_enabled.load(Ordering::SeqCst) {
+        let saved_ctx = state.active_app_context.lock().ok().and_then(|g| g.clone());
+        Some(saved_ctx.unwrap_or_else(crate::context::get_active_app_context))
     } else {
-        "(No audio detected)".to_string()
+        None
+    };
+
+    let final_transcript = {
+        let raw_transcript = transcribe_audio(audio_path, &api_key, Some(&sys_prompt), context_info.as_ref())
+            .await
+            .map_err(|e| format!("Transcription failed: {:#}", e))?;
+
+        if is_meaningful_speech(&raw_transcript) {
+            raw_transcript
+        } else {
+            "(No audio detected)".to_string()
+        }
     };
 
     if let Ok(mut last) = state.last_transcription.lock() {
@@ -582,6 +607,7 @@ pub async fn stop_recording_and_process(
     Ok(final_transcript)
 }
 
+
 #[tauri::command]
 pub async fn accept_text(window: WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
     let text = state
@@ -589,6 +615,7 @@ pub async fn accept_text(window: WebviewWindow, state: State<'_, AppState>) -> R
         .lock()
         .map_err(|_| "Mutex error")?
         .clone();
+
     let _ = window.hide();
 
     if is_meaningful_speech(&text) {
@@ -713,9 +740,124 @@ pub async fn test_prompt_expansion(
         memory.unwrap_or_else(get_saved_system_prompt_str)
     });
 
-    crate::groq::refine_text_with_llm(&input, &api_key, &sys_prompt)
+    let context_info = if state.context_aware_enabled.load(Ordering::SeqCst) {
+        let saved_ctx = state.active_app_context.lock().ok().and_then(|g| g.clone());
+        Some(saved_ctx.unwrap_or_else(crate::context::get_active_app_context))
+    } else {
+        None
+    };
+
+    crate::groq::refine_text_with_llm(&input, &api_key, &sys_prompt, context_info.as_ref())
         .await
         .map_err(|e| format!("Prompt expansion test failed: {:#}", e))
 }
+
+use crate::context::{get_active_app_context, AppContextInfo};
+use crate::vocabulary::{get_saved_vocabulary, save_vocabulary_to_disk, VocabularyEntry};
+
+#[tauri::command]
+pub async fn get_custom_vocabulary() -> Result<Vec<VocabularyEntry>, String> {
+    Ok(get_saved_vocabulary())
+}
+
+#[tauri::command]
+pub async fn save_custom_vocabulary(entries: Vec<VocabularyEntry>) -> Result<(), String> {
+    save_vocabulary_to_disk(&entries)
+}
+
+#[tauri::command]
+pub async fn add_vocabulary_entry(entry: VocabularyEntry) -> Result<(), String> {
+    let mut entries = get_saved_vocabulary();
+    entries.retain(|e| e.id != entry.id && !e.word.eq_ignore_ascii_case(&entry.word));
+    entries.push(entry);
+    save_vocabulary_to_disk(&entries)
+}
+
+#[tauri::command]
+pub async fn delete_vocabulary_entry(id: String) -> Result<(), String> {
+    let mut entries = get_saved_vocabulary();
+    entries.retain(|e| e.id != id);
+    save_vocabulary_to_disk(&entries)
+}
+
+#[tauri::command]
+pub async fn import_vocabulary_preset(preset_id: String) -> Result<Vec<VocabularyEntry>, String> {
+    let mut entries = get_saved_vocabulary();
+    let new_items: Vec<(&str, &str, Option<&str>)> = match preset_id.as_str() {
+        "dev" => vec![
+            ("TypeScript", "Tech", Some("type script")),
+            ("React", "Tech", None),
+            ("TailwindCSS", "Tech", Some("tailwind")),
+            ("FastAPI", "Tech", Some("fast api")),
+            ("PostgreSQL", "Tech", Some("postgres, post gres")),
+            ("GraphQL", "Tech", Some("graph ql")),
+            ("Docker", "DevOps", None),
+            ("OAuth2", "Tech", Some("o auth, oauth 2")),
+            ("Vitest", "Tech", Some("vi test")),
+            ("Rust", "Tech", None),
+            ("Next.js", "Tech", Some("next js")),
+            ("Redis", "Tech", None),
+        ],
+        "devops" => vec![
+            ("Kubernetes", "DevOps", Some("k8s, kube")),
+            ("kubectl", "DevOps", Some("kube ctl, kube control, kube cuddle")),
+            ("Terraform", "DevOps", None),
+            ("Helm", "DevOps", None),
+            ("Prometheus", "DevOps", None),
+            ("Grafana", "DevOps", None),
+            ("AWS", "Cloud", None),
+            ("Azure", "Cloud", None),
+            ("GCP", "Cloud", None),
+            ("CI/CD", "DevOps", Some("ci cd")),
+            ("GitHub Actions", "DevOps", None),
+        ],
+        "exec" => vec![
+            ("OKR", "Business", Some("okrs, o k r")),
+            ("KPI", "Business", Some("kpis, k p i")),
+            ("ARR", "Finance", Some("a r r")),
+            ("MRR", "Finance", Some("m r r")),
+            ("ROI", "Finance", Some("r o i")),
+            ("SLA", "Business", Some("s l a")),
+            ("Stakeholder", "Business", None),
+            ("Deliverables", "Business", None),
+        ],
+        _ => vec![],
+    };
+
+    for (word, cat, sounds) in new_items {
+        if !entries.iter().any(|e| e.word.eq_ignore_ascii_case(word)) {
+            entries.push(VocabularyEntry {
+                id: format!("preset_{}", word.to_lowercase().replace('.', "_").replace('/', "_")),
+                word: word.to_string(),
+                category: Some(cat.to_string()),
+                sounds_like: sounds.map(|s| s.to_string()),
+                enabled: true,
+            });
+        }
+    }
+
+    save_vocabulary_to_disk(&entries)?;
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn get_active_context_preview() -> Result<AppContextInfo, String> {
+    Ok(get_active_app_context())
+}
+
+#[tauri::command]
+pub async fn set_context_aware_enabled(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    state.context_aware_enabled.store(enabled, Ordering::SeqCst);
+    let config_file = get_config_dir().join("flow_dictate_context_aware.txt");
+    let _ = std::fs::write(&config_file, if enabled { "true" } else { "false" });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_context_aware_enabled(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.context_aware_enabled.load(Ordering::SeqCst))
+}
+
+
 
 

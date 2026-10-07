@@ -315,7 +315,7 @@ export default function App() {
               className={`flex ${isPushToTalk ? 'items-center justify-center w-full h-full' : 'flex-col justify-center flex-1 gap-2'}`}
             >
               {isPushToTalk ? (
-                <div className="flex-1 flex items-center justify-center overflow-hidden w-full h-full">
+                <div className="flex-1 flex items-center justify-center overflow-hidden w-full h-full px-2">
                   <AudioReactiveWaveform
                     volume={audioVolume}
                     compact={true}
@@ -377,7 +377,7 @@ export default function App() {
               exit={{ opacity: 0, y: -4 }}
               className="flex flex-col justify-between flex-1 gap-2 pt-0.5"
             >
-              <div className="skeuo-inner-socket px-3.5 py-3 rounded-xl text-xs text-zinc-100 max-h-24 overflow-y-auto break-words leading-relaxed font-code select-text">
+              <div className="skeuo-inner-socket px-3.5 py-2.5 rounded-xl text-xs text-zinc-100 max-h-24 overflow-y-auto break-words leading-relaxed font-code select-text">
                 {resultText}
               </div>
 
@@ -408,6 +408,7 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
 
           {/* State 4: Settings View */}
           {viewState === 'settings' && (

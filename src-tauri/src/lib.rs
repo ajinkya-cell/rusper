@@ -1,8 +1,10 @@
 pub mod audio;
 pub mod commands;
+pub mod context;
 pub mod groq;
 pub mod injector;
 pub mod state;
+pub mod vocabulary;
 
 use commands::*;
 use state::AppState;
@@ -14,7 +16,11 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub use std::sync::atomic::Ordering;
+use std::sync::Mutex;
+use std::time::Instant;
 use crate::injector::copy_and_inject_text;
+
+static RECORDING_START_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn parse_shortcut_str(s: &str) -> Option<Shortcut> {
     let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
@@ -128,13 +134,62 @@ pub fn run() {
                             return;
                         }
 
-                        // Save current foreground window handle before showing Rusper popup
-                        crate::injector::save_active_foreground_window();
+                        let is_currently_recording = state.is_recording.load(Ordering::SeqCst);
 
-                        // If already recording:
-                        if state.is_recording.load(Ordering::SeqCst) {
-                            if mode != "push_to_talk" {
-                                // Toggle-Stop: user pressed hotkey again to finish speaking
+                        if mode == "push_to_talk" {
+                            if is_currently_recording {
+                                // Ignore Windows keyboard auto-repeat while key is held down
+                                return;
+                            }
+
+                            // Mark recording active immediately to prevent key repeat bursts
+                            state.is_recording.store(true, Ordering::SeqCst);
+                            if let Ok(mut guard) = RECORDING_START_INSTANT.lock() {
+                                *guard = Some(Instant::now());
+                            }
+
+                            // Save target window before showing overlay
+                            crate::injector::save_active_foreground_window();
+
+                            // Capture active app context if enabled
+                            if state.context_aware_enabled.load(Ordering::SeqCst) {
+                                let ctx = crate::context::get_active_app_context();
+                                if let Ok(mut guard) = state.active_app_context.lock() {
+                                    *guard = Some(ctx);
+                                }
+                            }
+
+                            if let Some(window) = app.get_webview_window("main") {
+                                commands::apply_pure_window_attributes(&window);
+                                let handle_sz = app.clone();
+                                let mode_sz = mode.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let _ = commands::sync_window_size(handle_sz, mode_sz).await;
+                                });
+                                let _ = window.show();
+                                commands::apply_pure_window_attributes(&window);
+                                let _ = app.emit("ui-state", "recording");
+                                let handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state = handle.state::<AppState>();
+                                    if let Err(e) = start_recording(handle.clone(), state.clone()).await {
+                                        eprintln!("Start recording error: {}", e);
+                                        state.is_recording.store(false, Ordering::SeqCst);
+                                    }
+                                });
+                            }
+                        } else {
+                            // Interactive Mode (Toggle-To-Start / Toggle-To-Stop)
+                            if is_currently_recording {
+                                // Ignore auto-repeat key burst when pressing hotkey (debounce threshold 400ms)
+                                if let Ok(guard) = RECORDING_START_INSTANT.lock() {
+                                    if let Some(start_time) = *guard {
+                                        if start_time.elapsed() < std::time::Duration::from_millis(400) {
+                                            return;
+                                        }
+                                    }
+                                }
+
                                 let _ = app.emit("ui-state", "processing");
                                 let handle = app.clone();
                                 tauri::async_runtime::spawn(async move {
@@ -148,56 +203,79 @@ pub fn run() {
                                         }
                                     }
                                 });
+                                return;
                             }
-                            // In push_to_talk mode, ignore OS keyboard auto-repeat while key is held down
-                            return;
-                        }
 
-                        if let Some(window) = app.get_webview_window("main") {
-                            commands::apply_pure_window_attributes(&window);
-                            let handle_sz = app.clone();
-                            let mode_sz = mode.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let _ = commands::sync_window_size(handle_sz, mode_sz).await;
-                            });
-                            let _ = window.show();
-                            // Re-strip DWM frame border/shadow after the window becomes visible
-                            commands::apply_pure_window_attributes(&window);
-                            let _ = app.emit("ui-state", "recording");
-                            let handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let state = handle.state::<AppState>();
-                                let _ = start_recording(handle.clone(), state).await;
-                            });
-                        }
-                    } else if event.state() == ShortcutState::Released {
-                        if mode == "push_to_talk" {
+                            state.is_recording.store(true, Ordering::SeqCst);
+                            if let Ok(mut guard) = RECORDING_START_INSTANT.lock() {
+                                *guard = Some(Instant::now());
+                            }
+                            crate::injector::save_active_foreground_window();
+
+                            if state.context_aware_enabled.load(Ordering::SeqCst) {
+                                let ctx = crate::context::get_active_app_context();
+                                if let Ok(mut guard) = state.active_app_context.lock() {
+                                    *guard = Some(ctx);
+                                }
+                            }
+
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = app.emit("ui-state", "processing");
+                                commands::apply_pure_window_attributes(&window);
+                                let handle_sz = app.clone();
+                                let mode_sz = mode.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let _ = commands::sync_window_size(handle_sz, mode_sz).await;
+                                });
+                                let _ = window.show();
+                                commands::apply_pure_window_attributes(&window);
+                                let _ = app.emit("ui-state", "recording");
                                 let handle = app.clone();
                                 tauri::async_runtime::spawn(async move {
                                     let state = handle.state::<AppState>();
-                                    // Wait briefly if recording is still starting
-                                    let mut attempts = 0;
-                                    while !state.is_recording.load(Ordering::SeqCst) && attempts < 10 {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
-                                        attempts += 1;
+                                    if let Err(e) = start_recording(handle.clone(), state.clone()).await {
+                                        eprintln!("Start recording error: {}", e);
+                                        state.is_recording.store(false, Ordering::SeqCst);
                                     }
+                                });
+                            }
+                        }
+                    } else if event.state() == ShortcutState::Released {
+                        if mode == "push_to_talk" {
+                            if state.is_recording.load(Ordering::SeqCst) {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = app.emit("ui-state", "processing");
+                                    let handle = app.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        let state = handle.state::<AppState>();
+                                        
+                                        // Wait briefly if recording stream is still initializing
+                                        let mut attempts = 0;
+                                        while attempts < 15 {
+                                            if crate::commands::has_active_recorder() {
+                                                break;
+                                            }
+                                            tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+                                            attempts += 1;
+                                        }
 
-                                    if state.is_recording.load(Ordering::SeqCst) {
-                                        if let Ok(transcript) = stop_recording_and_process(state).await {
-                                            let text = transcript.trim().to_string();
-                                            if commands::is_meaningful_speech(&text) {
-                                                let _ = tokio::task::spawn_blocking(move || {
-                                                    let _ = copy_and_inject_text(&text);
-                                                }).await;
+                                        match stop_recording_and_process(state).await {
+                                            Ok(transcript) => {
+                                                let text = transcript.trim().to_string();
+                                                if commands::is_meaningful_speech(&text) {
+                                                    let _ = tokio::task::spawn_blocking(move || {
+                                                        let _ = copy_and_inject_text(&text);
+                                                    }).await;
+                                                }
+                                            }
+                                            Err(err) => {
+                                                eprintln!("Processing error on shortcut release: {}", err);
                                             }
                                         }
-                                    }
-                                    // 150ms visual completion buffer so loading animation finishes smoothly
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
-                                    let _ = window.hide();
-                                });
+                                        // Smooth transition delay before hiding capsule
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                                        let _ = window.hide();
+                                    });
+                                }
                             }
                         }
                     }
@@ -239,6 +317,14 @@ pub fn run() {
             let saved_prompt = commands::get_saved_system_prompt_str();
             if let Ok(mut guard) = app.state::<AppState>().system_prompt.lock() {
                 *guard = saved_prompt;
+            }
+
+            // Load Context Awareness Setting
+            let context_file = commands::get_config_dir().join("flow_dictate_context_aware.txt");
+            if let Ok(c) = std::fs::read_to_string(&context_file) {
+                if c.trim() == "false" {
+                    app.state::<AppState>().context_aware_enabled.store(false, Ordering::SeqCst);
+                }
             }
 
             // Register Saved Global Hotkey (defaults to ScrollLock if not set)
@@ -296,8 +382,17 @@ pub fn run() {
             stop_mic_test,
             sync_window_size,
             open_external_url,
-            test_prompt_expansion
+            test_prompt_expansion,
+            get_custom_vocabulary,
+            save_custom_vocabulary,
+            add_vocabulary_entry,
+            delete_vocabulary_entry,
+            import_vocabulary_preset,
+            get_active_context_preview,
+            set_context_aware_enabled,
+            get_context_aware_enabled
         ])
+
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
